@@ -30,6 +30,10 @@
 
 @implementation MyTripsTVC
 
+- (UIColor *)systemTintColor {
+    return [UIColor systemBlueColor];
+}
+
 - (void)getTripInfos {
     self.localTripInfos = [[NSMutableDictionary alloc] init];
     self.uploadedTripInfos = [[NSMutableDictionary alloc] init];
@@ -65,6 +69,12 @@ NSInteger revertedSort(id num1, id num2, void *context) {
 
 - (void)viewDidLoad {
     [super viewDidLoad];
+
+    self.view.tintColor = [self systemTintColor];
+    self.tableView.separatorInset = UIEdgeInsetsMake(0.0, 20.0, 0.0, 20.0);
+    if (@available(iOS 13.0, *)) {
+        self.tableView.backgroundColor = [UIColor systemGroupedBackgroundColor];
+    }
 
     self.editButton = [[UIBarButtonItem alloc]
                        initWithBarButtonSystemItem:UIBarButtonSystemItemEdit
@@ -274,6 +284,10 @@ NSInteger revertedSort(id num1, id num2, void *context) {
 #endif
 
     cell.detailTextLabel.text = detail;
+    cell.tintColor = [self systemTintColor];
+    if (@available(iOS 13.0, *)) {
+        cell.backgroundColor = [UIColor secondarySystemGroupedBackgroundColor];
+    }
     return cell;
 }
 

@@ -36,6 +36,7 @@
     self.filePasswd = [ad.defaults stringForKey:@"filePasswd"];
 
     self.tripInfos = [[NSMutableDictionary alloc] init];
+    [Trip recoverIncompleteTrips];
 
     NSArray <NSNumber *> *allTripInfos = [[TripInfo allStoredIdentifiers] sortedArrayUsingSelector:@selector(compare:)];
     NSLog(@"allTripInfos %@", allTripInfos);

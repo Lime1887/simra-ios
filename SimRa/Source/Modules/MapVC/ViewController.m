@@ -54,6 +54,9 @@
 @property (strong, nonatomic) UIAlertController *ac;
 @property (nonatomic) NSInteger queued;
 @property (strong, nonatomic) UIButton *openBikeSensorConfigButton;
+@property (strong, nonatomic) UIButton *recordActionButton;
+@property (strong, nonatomic) NSDate *recordingStartedAt;
+@property (strong, nonatomic) NSTimer *recordingDisplayTimer;
 
 @property (nonatomic) BOOL initialMessagePassed;
 
@@ -61,6 +64,231 @@
 
 @implementation ViewController
 @synthesize bleManager;
+
+- (NSString *)recordingStatusText {
+    if (!self.trip) {
+        return NSLocalizedString(@"Not Recording", @"Not Recording");
+    }
+
+    NSTimeInterval seconds = 0;
+    NSInteger meters = 0;
+
+    if (self.trip.lastLocation && self.trip.startLocation) {
+        AppDelegate *ad = [AppDelegate sharedDelegate];
+        NSInteger deferredSecs = [ad.defaults integerForKey:@"deferredSecs"];
+        seconds = [self.trip.lastLocation.timestamp timeIntervalSinceDate:self.trip.startLocation.timestamp] - deferredSecs;
+        NSInteger deferredMeters = [ad.defaults integerForKey:@"deferredMeters"];
+        meters = [self.trip.lastLocation distanceFromLocation:self.trip.startLocation] - deferredMeters;
+    } else if (self.recordingStartedAt) {
+        seconds = [[NSDate date] timeIntervalSinceDate:self.recordingStartedAt];
+    }
+
+    if (seconds < 0) {
+        seconds = 0;
+    }
+    if (meters < 0) {
+        meters = 0;
+    }
+
+    return [NSString stringWithFormat:@"%@ / %ld m",
+            hms(seconds),
+            (long)meters];
+}
+
+- (UIColor *)controlForegroundColor {
+    return [UIColor blackColor];
+}
+
+- (UIColor *)systemTintColor {
+    return [UIColor systemBlueColor];
+}
+
+- (void)styleFloatingControl:(UIView *)control {
+    control.layer.shadowColor = [UIColor blackColor].CGColor;
+    control.layer.shadowOpacity = 0.14;
+    control.layer.shadowRadius = 18.0;
+    control.layer.shadowOffset = CGSizeMake(0.0, 8.0);
+}
+
+- (void)startRecordingDisplayTimer {
+    [self stopRecordingDisplayTimer];
+    __weak typeof(self) weakSelf = self;
+    self.recordingDisplayTimer = [NSTimer scheduledTimerWithTimeInterval:1.0
+                                                                 repeats:YES
+                                                                   block:^(NSTimer *timer) {
+        __strong typeof(weakSelf) strongSelf = weakSelf;
+        if (strongSelf.trip) {
+            [strongSelf updateRecordingControlState];
+        } else {
+            [strongSelf stopRecordingDisplayTimer];
+        }
+    }];
+}
+
+- (void)stopRecordingDisplayTimer {
+    [self.recordingDisplayTimer invalidate];
+    self.recordingDisplayTimer = nil;
+    self.recordingStartedAt = nil;
+}
+
+- (UIButtonConfiguration *)navigationButtonConfigurationWithSymbol:(NSString *)symbolName API_AVAILABLE(ios(15.0)) {
+    UIButtonConfiguration *config;
+    if (@available(iOS 26.0, *)) {
+        config = [UIButtonConfiguration glassButtonConfiguration];
+    } else {
+        config = [UIButtonConfiguration borderedButtonConfiguration];
+    }
+    config.cornerStyle = UIButtonConfigurationCornerStyleCapsule;
+    config.image = [UIImage systemImageNamed:symbolName];
+    config.contentInsets = NSDirectionalEdgeInsetsMake(8.0, 8.0, 8.0, 8.0);
+    config.baseForegroundColor = [self systemTintColor];
+    return config;
+}
+
+- (UIBarButtonItem *)barButtonItemWithSymbol:(NSString *)symbolName
+                                       title:(NSString *)title
+                                      target:(id)target
+                                      action:(SEL)action {
+    UIButton *button = [UIButton buttonWithType:UIButtonTypeSystem];
+    button.translatesAutoresizingMaskIntoConstraints = NO;
+    button.accessibilityLabel = title;
+    [button addTarget:target action:action forControlEvents:UIControlEventTouchUpInside];
+
+    if (@available(iOS 15.0, *)) {
+        button.configuration = [self navigationButtonConfigurationWithSymbol:symbolName];
+    } else {
+        [button setImage:[UIImage systemImageNamed:symbolName] forState:UIControlStateNormal];
+        button.tintColor = [self systemTintColor];
+    }
+    [self styleFloatingControl:button];
+
+    [NSLayoutConstraint activateConstraints:@[
+        [button.widthAnchor constraintEqualToConstant:36.0],
+        [button.heightAnchor constraintEqualToConstant:36.0],
+    ]];
+
+    return [[UIBarButtonItem alloc] initWithCustomView:button];
+}
+
+- (void)setupNavigationButtons {
+    self.navigationItem.largeTitleDisplayMode = UINavigationItemLargeTitleDisplayModeNever;
+
+    self.navigationItem.leftBarButtonItem = [self barButtonItemWithSymbol:@"gearshape.fill"
+                                                                    title:NSLocalizedString(@"Settings", @"Settings")
+                                                                   target:self
+                                                                   action:@selector(settingsButtonPressed)];
+    self.navigationItem.rightBarButtonItem = [self barButtonItemWithSymbol:@"list.bullet"
+                                                                   title:NSLocalizedString(@"Trips", @"Trips")
+                                                                  target:self
+                                                                  action:@selector(tripsButtonPressed)];
+}
+
+- (void)settingsButtonPressed {
+    [self performSegueWithIdentifier:@"showSettings" sender:nil];
+}
+
+- (void)tripsButtonPressed {
+    self.recordedTrip = nil;
+    [self performSegueWithIdentifier:@"trips:" sender:self];
+}
+
+- (UIButtonConfiguration *)recordActionButtonConfigurationForRecording:(BOOL)recording API_AVAILABLE(ios(15.0)) {
+    UIButtonConfiguration *config;
+    
+    if (@available(iOS 26.0, *)) {
+        // Native Glass Configuration für iOS 26+
+        config = [UIButtonConfiguration glassButtonConfiguration];
+    } else {
+        // Fallback: Tinted Capsule-Look für iOS 15+
+        config = [UIButtonConfiguration tintedButtonConfiguration];
+    }
+
+    config.cornerStyle = UIButtonConfigurationCornerStyleCapsule;
+    config.imagePadding = 10.0;
+    config.contentInsets = NSDirectionalEdgeInsetsMake(14.0, 24.0, 14.0, 24.0);
+
+    if (recording) {
+        config.title = NSLocalizedString(@"Stop", @"Stop");
+        config.image = [UIImage systemImageNamed:@"stop.fill"];
+        config.subtitle = [self recordingStatusText];
+        
+        // Dezent getöntes Liquid-Rot/Orange für Stopp (kein haptisches/mattes Knallrot)
+        config.baseBackgroundColor = [[UIColor systemRedColor] colorWithAlphaComponent:0.25];
+        config.baseForegroundColor = [UIColor systemRedColor];
+    } else {
+        config.title = NSLocalizedString(@"Start Ride", @"Start Ride");
+        config.image = [UIImage systemImageNamed:@"play.fill"];
+        config.subtitle = nil;
+        
+        // Dezent getöntes Liquid-Grün für Start
+        config.baseBackgroundColor = [[UIColor systemGreenColor] colorWithAlphaComponent:0.25];
+        config.baseForegroundColor = [UIColor systemGreenColor];
+    }
+
+    return config;
+}
+
+- (void)updateRecordingControlState {
+    BOOL recording = self.trip != nil;
+    self.dummyButton.title = [self recordingStatusText];
+
+    if (@available(iOS 15.0, *)) {
+        self.recordActionButton.configuration = [self recordActionButtonConfigurationForRecording:recording];
+    } else {
+        if (recording) {
+            [self.recordActionButton setTitle:NSLocalizedString(@"Stop", @"Stop") forState:UIControlStateNormal];
+            [self.recordActionButton setImage:[UIImage systemImageNamed:@"stop.fill"] forState:UIControlStateNormal];
+        } else {
+            [self.recordActionButton setTitle:NSLocalizedString(@"Start Ride", @"Start Ride") forState:UIControlStateNormal];
+            [self.recordActionButton setImage:[UIImage systemImageNamed:@"play.fill"] forState:UIControlStateNormal];
+        }
+    }
+
+    if (@available(iOS 14.0, *)) {
+        self.recordActionButton.role = UIButtonRoleNormal;
+    }
+}
+
+- (void)recordActionButtonPressed:(UIButton *)sender {
+    if (self.trip) {
+        [self stopButtonPressed:nil];
+    } else {
+        [self playButtonPressed:nil];
+    }
+}
+
+- (void)setupRecordingControls {
+    if (self.recordActionButton) {
+        return;
+    }
+
+    self.navigationController.toolbarHidden = YES;
+    self.toolbarItems = @[];
+
+    UIButton *actionButton = [UIButton buttonWithType:UIButtonTypeSystem];
+    actionButton.translatesAutoresizingMaskIntoConstraints = NO;
+    actionButton.tintColor = [self controlForegroundColor];
+    if (@available(iOS 15.0, *)) {
+        actionButton.configuration = [self recordActionButtonConfigurationForRecording:NO];
+    } else {
+        [actionButton setTitle:NSLocalizedString(@"Start Ride", @"Start Ride") forState:UIControlStateNormal];
+        [actionButton setImage:[UIImage systemImageNamed:@"play.fill"] forState:UIControlStateNormal];
+        actionButton.titleLabel.font = [UIFont preferredFontForTextStyle:UIFontTextStyleHeadline];
+    }
+    [self styleFloatingControl:actionButton];
+
+    [actionButton addTarget:self action:@selector(recordActionButtonPressed:) forControlEvents:UIControlEventTouchUpInside];
+    [self.view addSubview:actionButton];
+
+    [NSLayoutConstraint activateConstraints:@[
+        [actionButton.centerXAnchor constraintEqualToAnchor:self.view.centerXAnchor],
+        [actionButton.bottomAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.bottomAnchor constant:-16.0],
+    ]];
+
+    self.recordActionButton = actionButton;
+    [self updateRecordingControlState];
+}
+
 - (void)viewDidLoad {
     [super viewDidLoad];
     self.mapView.delegate = self;
@@ -71,6 +299,8 @@
     
     self.trackingButton = [MKUserTrackingButton userTrackingButtonWithMapView:self.mapView];
     self.trackingButton.translatesAutoresizingMaskIntoConstraints = false;
+    self.trackingButton.tintColor = [self systemTintColor];
+    [self styleFloatingControl:self.trackingButton];
     [self.view addSubview:self.trackingButton];
     NSLayoutConstraint *a = [NSLayoutConstraint constraintWithItem:self.trackingButton
                                                          attribute:NSLayoutAttributeBottom relatedBy:NSLayoutRelationEqual
@@ -87,6 +317,8 @@
 
     [NSLayoutConstraint activateConstraints:@[a, b]];
     [self setupOpenBikeSensor];
+    [self setupNavigationButtons];
+    [self setupRecordingControls];
     self.playButton.enabled = TRUE;
     self.stopButton.enabled = FALSE;
     self.navigationItem.leftBarButtonItem.enabled = TRUE;
@@ -178,9 +410,16 @@
 }
 
 -(void)setupOpenBikeSensor{
-    self.openBikeSensorConfigButton = [[UIButton alloc]init];
+    self.openBikeSensorConfigButton = [UIButton buttonWithType:UIButtonTypeSystem];
     self.openBikeSensorConfigButton.translatesAutoresizingMaskIntoConstraints = false;
-    [self.openBikeSensorConfigButton setBackgroundImage:[UIImage imageNamed:@"bluetooth"] forState:UIControlStateNormal];
+    self.openBikeSensorConfigButton.tintColor = [self systemTintColor];
+    if (@available(iOS 15.0, *)) {
+        UIButtonConfiguration *config = [self navigationButtonConfigurationWithSymbol:@"sensor.tag.radiowaves.forward"];
+        self.openBikeSensorConfigButton.configuration = config;
+    } else {
+        [self.openBikeSensorConfigButton setImage:[UIImage imageNamed:@"bluetooth"] forState:UIControlStateNormal];
+    }
+    [self styleFloatingControl:self.openBikeSensorConfigButton];
     [self.openBikeSensorConfigButton addTarget:self action:@selector(didTapOnOBSConfig) forControlEvents:UIControlEventTouchUpInside];
     [self.view addSubview:self.openBikeSensorConfigButton];
     NSLayoutConstraint *bottomConstraintOBS = [NSLayoutConstraint constraintWithItem:self.openBikeSensorConfigButton
@@ -288,10 +527,11 @@
 - (IBAction)playButtonPressed:(UIBarButtonItem *)sender {
     AppDelegate *ad = [AppDelegate sharedDelegate];
     self.trip = [ad.trips newTrip];
+    self.recordingStartedAt = [NSDate date];
     [self.trip startRecording];
 
-    self.playButton.enabled = FALSE;
-    self.stopButton.enabled = TRUE;
+    [self updateRecordingControlState];
+    [self startRecordingDisplayTimer];
     self.navigationItem.leftBarButtonItem.enabled = FALSE;
     self.navigationItem.rightBarButtonItem.enabled = FALSE;
 
@@ -306,6 +546,8 @@
 }
 
 - (IBAction)stopButtonPressed:(UIBarButtonItem *)sender {
+    [self stopRecordingDisplayTimer];
+
     [self.trip removeObserver:self
                    forKeyPath:@"lastLocation"];
     [self.trip removeObserver:self
@@ -332,11 +574,9 @@
         self.annotationView.accz = 0.0;
         [self.annotationView setNeedsDisplay];
         
-        self.playButton.enabled = TRUE;
-        self.stopButton.enabled = FALSE;
+        [self updateRecordingControlState];
         self.navigationItem.leftBarButtonItem.enabled = TRUE;
         self.navigationItem.rightBarButtonItem.enabled = TRUE;
-        self.dummyButton.title = NSLocalizedString(@"Not Recording", @"Not Recording");
     }];
 //    [ac dismissViewControllerAnimated:TRUE completion:nil];
 }
@@ -397,19 +637,9 @@
         }
 
         if (self.trip) {
-            if (self.trip.lastLocation) {
-                AppDelegate *ad = [AppDelegate sharedDelegate];
-                NSInteger deferredSecs = [ad.defaults integerForKey:@"deferredSecs"];
-                NSTimeInterval seconds = [self.trip.lastLocation.timestamp timeIntervalSinceDate:self.trip.startLocation.timestamp] - deferredSecs;
-                NSInteger deferredMeters = [ad.defaults integerForKey:@"deferredMeters"];
-                NSInteger meters = [self.trip.lastLocation distanceFromLocation:self.trip.startLocation] - deferredMeters;
-
-                self.dummyButton.title = [NSString stringWithFormat:@"%@ / %ld m",
-                                          hms(seconds),
-                                          meters];
-            } else {
-                self.dummyButton.title = NSLocalizedString(@"Recording", @"Recording");
-            }
+            [self updateRecordingControlState];
+        } else {
+            [self updateRecordingControlState];
         }
     }
 }
@@ -448,7 +678,7 @@
 }
 
 - (void)prepareForSegue:(UIStoryboardSegue *)segue sender:(id)sender {
-    if (!sender) {
+    if (!sender && self.recordedTrip) {
         if ([segue.destinationViewController isKindOfClass:[MyTripsTVC class]]) {
             MyTripsTVC *myTripsTVC = (MyTripsTVC *)segue.destinationViewController;
             myTripsTVC.preselectedTrip = self.recordedTrip;
@@ -499,7 +729,7 @@
         NSNumber * leftSensor = [self.bleManager compareLeftSensorLeastSignificantBitWithBytes:byteArray];
         NSNumber * rightSensor = [self.bleManager compareRightSensorLeastSignificantBitWithBytes:byteArray];
 
-        if (!self.playButton.isEnabled){
+        if (self.trip != nil){
             // if recording the trip, store values in the trip.
             [self.trip storeClosePassValueForTripWithLeftSensorVal:leftSensor
                                                     rightSensorVal:rightSensor

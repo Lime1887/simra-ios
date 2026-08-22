@@ -1,5 +1,11 @@
 # SimRa Changelog
 
+## Unreleased 2026-08-22
+    [NEW] Automatic recovery of unfinished trips after crashes or unexpected background termination
+    [NEW] Redesigned trip recording control with a floating Liquid Glass action button
+    [UI] Updated navigation bar buttons with system glass styling and SF Symbols
+    
+
 ## Version 10 2019-07-26
     [NEW] Scary Events / Beängstigende Ereignisse in Statistik closes #19
 

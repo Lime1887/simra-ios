@@ -111,7 +111,7 @@
 		84564AF722549B1100D46132 /* Base */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = Base; path = Base.lproj/Localizable.strings; sourceTree = "<group>"; };
 		84564AF922549B1500D46132 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
 		84564AFA22549B1700D46132 /* de */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = de; path = de.lproj/Localizable.strings; sourceTree = "<group>"; };
-		845FD034225D71E90041568E /* Hash-Suffix.h.sample */ = {isa = PBXFileReference; lastKnownFileType = text; path = "Hash-Suffix.h.sample"; sourceTree = "<group>"; };
+		845FD034225D71E90041568E /* Hash-Suffix.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "Hash-Suffix.h"; sourceTree = "<group>"; };
 		845FD035225D71FE0041568E /* Hash-Suffix.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = "Hash-Suffix.h"; sourceTree = "<group>"; };
 		8470352A23D6D0810041AAFB /* Region.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Region.h; sourceTree = "<group>"; };
 		8470352B23D6D0810041AAFB /* Region.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = Region.m; sourceTree = "<group>"; };
@@ -207,7 +207,7 @@
 				848338002253C6A200342285 /* server.cer */,
 				84DD1E92224C0028004895F9 /* Assets.xcassets */,
 				845FD035225D71FE0041568E /* Hash-Suffix.h */,
-				845FD034225D71E90041568E /* Hash-Suffix.h.sample */,
+				845FD034225D71E90041568E /* Hash-Suffix.h */,
 				A0C9087B2ECD0B43009FD4E8 /* Hash-Suffix.h */,
 			);
 			path = Resources;

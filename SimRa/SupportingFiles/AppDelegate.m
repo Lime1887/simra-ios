@@ -16,7 +16,17 @@
     return (AppDelegate *)[UIApplication sharedApplication].delegate;
 }
 
+- (UIColor *)systemTintColor {
+    return [UIColor systemBlueColor];
+}
+
 - (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)launchOptions {
+    UIColor *tintColor = [self systemTintColor];
+    self.window.tintColor = tintColor;
+    [UIBarButtonItem appearance].tintColor = tintColor;
+    [UIToolbar appearance].tintColor = tintColor;
+    [UISwitch appearance].onTintColor = tintColor;
+
     self.defaults = [NSUserDefaults standardUserDefaults];
     [self createPrefsFiles];
 

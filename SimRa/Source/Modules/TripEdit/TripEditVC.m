@@ -155,6 +155,7 @@
 @property (strong, nonatomic) NSMutableArray <TripPoint *> *tripPoints;
 
 @property (strong, nonatomic) UIButton *detailButton;
+@property (strong, nonatomic) UIVisualEffectView *rangeSliderBackdropView;
 @property (strong, nonatomic) TTRangeSlider *rangeSlider;
 @property (nonatomic) float lastSliderMinSelected;
 @property (nonatomic) float lastSliderMaxSelected;
@@ -164,13 +165,50 @@
 
 @implementation TripEditVC
 
+- (UIColor *)systemTintColor {
+    return [UIColor systemBlueColor];
+}
+
+- (UIVisualEffect *)systemGlassEffect {
+    if (@available(iOS 26.0, *)) {
+        return [UIGlassEffect effectWithStyle:UIGlassEffectStyleRegular];
+    }
+    return [UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemUltraThinMaterial];
+}
+
+- (void)styleFloatingControl:(UIView *)control {
+    control.layer.shadowColor = [UIColor blackColor].CGColor;
+    control.layer.shadowOpacity = 0.14;
+    control.layer.shadowRadius = 18.0;
+    control.layer.shadowOffset = CGSizeMake(0.0, 8.0);
+}
+
 - (void)viewDidLoad {
     [super viewDidLoad];
     // Do any additional setup after loading the view.
+    self.view.tintColor = [self systemTintColor];
     self.mapView.delegate = self;
     
-    self.detailButton = [UIButton buttonWithType:UIButtonTypeDetailDisclosure];
+    self.detailButton = [UIButton buttonWithType:UIButtonTypeSystem];
     self.detailButton.translatesAutoresizingMaskIntoConstraints = false;
+    self.detailButton.tintColor = [self systemTintColor];
+    self.detailButton.accessibilityLabel = NSLocalizedString(@"Details", @"Details");
+    if (@available(iOS 15.0, *)) {
+        UIButtonConfiguration *config;
+        if (@available(iOS 26.0, *)) {
+            config = [UIButtonConfiguration glassButtonConfiguration];
+        } else {
+            config = [UIButtonConfiguration borderedButtonConfiguration];
+        }
+        config.cornerStyle = UIButtonConfigurationCornerStyleCapsule;
+        config.image = [UIImage systemImageNamed:@"info.circle.fill"];
+        config.baseForegroundColor = [self systemTintColor];
+        config.contentInsets = NSDirectionalEdgeInsetsMake(8.0, 8.0, 8.0, 8.0);
+        self.detailButton.configuration = config;
+    } else {
+        [self.detailButton setImage:[UIImage systemImageNamed:@"info.circle.fill"] forState:UIControlStateNormal];
+    }
+    [self styleFloatingControl:self.detailButton];
     [self.detailButton addTarget:self action:@selector(infoPressed:) forControlEvents:UIControlEventTouchUpInside];
     [self.view addSubview:self.detailButton];
     
@@ -189,11 +227,21 @@
     
     [NSLayoutConstraint activateConstraints:@[a, b]];
     
+    self.rangeSliderBackdropView = [[UIVisualEffectView alloc] initWithEffect:[self systemGlassEffect]];
+    self.rangeSliderBackdropView.translatesAutoresizingMaskIntoConstraints = false;
+    self.rangeSliderBackdropView.layer.cornerRadius = 18.0;
+    self.rangeSliderBackdropView.layer.cornerCurve = kCACornerCurveContinuous;
+    self.rangeSliderBackdropView.clipsToBounds = YES;
+    [self styleFloatingControl:self.rangeSliderBackdropView];
+    [self.view addSubview:self.rangeSliderBackdropView];
+
     self.rangeSlider = [[TTRangeSlider alloc] init];
-    self.rangeSlider.backgroundColor = [UIColor colorWithRed:0.5
-                                                       green:0.5
-                                                        blue:0.5
-                                                       alpha:0.5];
+    self.rangeSlider.backgroundColor = [UIColor clearColor];
+    self.rangeSlider.tintColor = [self systemTintColor];
+    self.rangeSlider.tintColorBetweenHandles = [self systemTintColor];
+    self.rangeSlider.handleColor = [UIColor systemBackgroundColor];
+    self.rangeSlider.handleBorderColor = [[self systemTintColor] colorWithAlphaComponent:0.35];
+    self.rangeSlider.handleBorderWidth = 1.0;
     self.rangeSlider.translatesAutoresizingMaskIntoConstraints = false;
     [self.rangeSlider addTarget:self action:@selector(sliderChanged:) forControlEvents:UIControlEventValueChanged];
     
@@ -231,6 +279,12 @@
     
     
     [NSLayoutConstraint activateConstraints:@[top, leading, trailing]];
+    [NSLayoutConstraint activateConstraints:@[
+        [self.rangeSliderBackdropView.leadingAnchor constraintEqualToAnchor:self.rangeSlider.leadingAnchor constant:-8.0],
+        [self.rangeSliderBackdropView.trailingAnchor constraintEqualToAnchor:self.rangeSlider.trailingAnchor constant:8.0],
+        [self.rangeSliderBackdropView.topAnchor constraintEqualToAnchor:self.rangeSlider.topAnchor constant:-10.0],
+        [self.rangeSliderBackdropView.bottomAnchor constraintEqualToAnchor:self.rangeSlider.bottomAnchor constant:10.0],
+    ]];
 }
 
 - (void)viewWillAppear:(BOOL)animated {
@@ -309,10 +363,12 @@
         self.navigationItem.rightBarButtonItem.enabled = FALSE;
         self.detailButton.enabled = FALSE;
         self.rangeSlider.hidden = TRUE;
+        self.rangeSliderBackdropView.hidden = TRUE;
     } else {
         self.navigationItem.rightBarButtonItem.enabled = TRUE;
         self.detailButton.enabled = TRUE;
         self.rangeSlider.hidden = FALSE;
+        self.rangeSliderBackdropView.hidden = FALSE;
     }
     
     self.rangeSlider.minValue = 0;
@@ -420,7 +476,7 @@
                 [[pinAnnotationView superview] sendSubviewToBack:pinAnnotationView];
 
             } else {
-                pinAnnotationView.pinTintColor = [UIColor blueColor];
+                pinAnnotationView.pinTintColor = [self systemTintColor];
                 [[pinAnnotationView superview] bringSubviewToFront:pinAnnotationView];
 
             }

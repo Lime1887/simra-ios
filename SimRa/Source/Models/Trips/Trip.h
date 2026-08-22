@@ -111,6 +111,7 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic) Boolean reUploaded;
 
 + (NSArray <NSNumber *> *)allStoredIdentifiers;
++ (void)recoverIncompleteTrips;
 - (instancetype)initFromStorage:(NSInteger)identifier;
 + (void)deleteFromStorage:(NSInteger)identifier;
 - (void)startRecording;
