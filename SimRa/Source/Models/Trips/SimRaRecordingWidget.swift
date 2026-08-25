@@ -22,46 +22,68 @@ struct SimRaLiveActivity: Widget {
 
             // MARK: Lock Screen / Banner
 
-            HStack(spacing: 14) {
+            VStack(alignment: .leading, spacing: 12) {
 
-                Image(systemName: "bicycle")
-                    .font(.title2)
-                    .foregroundStyle(.tint)
+                HStack(spacing: 14) {
 
-                VStack(alignment: .leading, spacing: 5) {
+                    Image(systemName: "bicycle")
+                        .font(.title2)
+                        .foregroundStyle(.tint)
 
-                    Text("SimRa")
-                        .font(.headline)
+                    VStack(alignment: .leading, spacing: 5) {
 
-                    HStack(spacing: 14) {
+                        Text("SimRa")
+                            .font(.headline)
 
-                        Label {
-                            Text(
-                                formatElapsed(
-                                    context.state.elapsedSeconds
+                        HStack(spacing: 14) {
+
+                            Label {
+                                Text(
+                                    formatElapsed(
+                                        context.state.elapsedSeconds
+                                    )
                                 )
-                            )
-                            .monospacedDigit()
-                        } icon: {
-                            Image(systemName: "timer")
-                        }
+                                .monospacedDigit()
+                            } icon: {
+                                Image(systemName: "timer")
+                            }
 
-                        Label {
-                            Text(
-                                formatDistance(
-                                    context.state.distanceMeters
+                            Label {
+                                Text(
+                                    formatDistance(
+                                        context.state.distanceMeters
+                                    )
                                 )
-                            )
-                            .monospacedDigit()
-                        } icon: {
-                            Image(systemName: "location")
+                                .monospacedDigit()
+                            } icon: {
+                                Image(systemName: "location")
+                            }
                         }
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
                     }
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+
+                    Spacer(minLength: 0)
                 }
 
-                Spacer(minLength: 0)
+                if #available(iOS 17.0, *) {
+                    Button(intent: StopRecordingIntent()) {
+                        Label("Stop recording", systemImage: "stop.fill")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .padding(.vertical, 11)
+                    .padding(.horizontal, 14)
+                    .background(
+                        .red.opacity(0.12),
+                        in: Capsule()
+                    )
+                    .overlay(
+                        Capsule()
+                            .stroke(.red.opacity(0.34), lineWidth: 1)
+                    )
+                    .foregroundStyle(.red)
+                    .buttonStyle(.plain)
+                }
             }
             .padding()
             .activityBackgroundTint(.clear)
@@ -136,29 +158,50 @@ struct SimRaLiveActivity: Widget {
                 // MARK: Expanded Bottom
 
                 DynamicIslandExpandedRegion(.bottom) {
+                    VStack(alignment: .leading, spacing: 10) {
 
-                    HStack {
+                        HStack {
 
-                        Label {
-                            Text(
-                                formatDistance(
-                                    context.state.distanceMeters
+                            Label {
+                                Text(
+                                    formatDistance(
+                                        context.state.distanceMeters
+                                    )
                                 )
+                                .monospacedDigit()
+                            } icon: {
+                                Image(systemName: "location")
+                            }
+
+                            Spacer()
+
+                            Label(
+                                "SimRa",
+                                systemImage: "bicycle"
                             )
-                            .monospacedDigit()
-                        } icon: {
-                            Image(systemName: "location")
                         }
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
 
-                        Spacer()
-
-                        Label(
-                            "SimRa",
-                            systemImage: "bicycle"
-                        )
+                        if #available(iOS 17.0, *) {
+                            Button(intent: StopRecordingIntent()) {
+                                Label("Stop", systemImage: "stop.fill")
+                                    .frame(maxWidth: .infinity)
+                            }
+                            .padding(.vertical, 10)
+                            .padding(.horizontal, 12)
+                            .background(
+                                .red.opacity(0.12),
+                                in: Capsule()
+                            )
+                            .overlay(
+                                Capsule()
+                                    .stroke(.red.opacity(0.34), lineWidth: 1)
+                            )
+                            .foregroundStyle(.red)
+                            .buttonStyle(.plain)
+                        }
                     }
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
                 }
 
             } compactLeading: {
