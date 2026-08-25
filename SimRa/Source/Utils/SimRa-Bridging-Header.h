@@ -1,6 +1,9 @@
 //
-//  Use this file to import your target's public headers that you would like to expose to Swift.
+//  Bridging-Header.h
+//  SimRa
+//
+//  Created by Emil Pauls on 27.08.26.
+//  Copyright © 2026 Mobile Cloud Computing an der Fakultät IV (Elektrotechnik und Informatik) der TU Berlin. All rights reserved.
 //
 
-#import "AppDelegate.h"
-#import "RecordingShortcutBridge.h"
+#import "../Source/Modules/OpenBikeSensorConfig/DeviceTableViewCell.h"

@@ -14,27 +14,24 @@ struct Provider: AppIntentTimelineProvider {
         SimpleEntry(date: Date(), configuration: ConfigurationAppIntent())
     }
 
-    func snapshot(for configuration: ConfigurationAppIntent, in context: Context) async -> SimpleEntry {
+    func snapshot(
+        for configuration: ConfigurationAppIntent,
+        in context: Context
+    ) async -> SimpleEntry {
         SimpleEntry(date: Date(), configuration: configuration)
     }
-    
-    func timeline(for configuration: ConfigurationAppIntent, in context: Context) async -> Timeline<SimpleEntry> {
-        var entries: [SimpleEntry] = []
 
-        // Generate a timeline consisting of five entries an hour apart, starting from the current date.
-        let currentDate = Date()
-        for hourOffset in 0 ..< 5 {
-            let entryDate = Calendar.current.date(byAdding: .hour, value: hourOffset, to: currentDate)!
-            let entry = SimpleEntry(date: entryDate, configuration: configuration)
-            entries.append(entry)
-        }
-
-        return Timeline(entries: entries, policy: .atEnd)
+    func timeline(
+        for configuration: ConfigurationAppIntent,
+        in context: Context
+    ) async -> Timeline<SimpleEntry> {
+        Timeline(
+            entries: [
+                SimpleEntry(date: Date(), configuration: configuration)
+            ],
+            policy: .never
+        )
     }
-
-//    func relevances() async -> WidgetRelevances<ConfigurationAppIntent> {
-//        // Generate a list containing the contexts this widget is relevant in.
-//    }
 }
 
 struct SimpleEntry: TimelineEntry {
@@ -42,16 +39,54 @@ struct SimpleEntry: TimelineEntry {
     let configuration: ConfigurationAppIntent
 }
 
-struct SimRa_WidgetsEntryView : View {
+struct SimRa_WidgetsEntryView: View {
     var entry: Provider.Entry
 
     var body: some View {
-        VStack {
-            Text("Time:")
-            Text(entry.date, style: .time)
+        VStack(alignment: .leading, spacing: 12) {
+            Label("SimRa", systemImage: "bicycle")
+                .font(.headline)
 
-            Text("Favorite Emoji:")
-            Text(entry.configuration.favoriteEmoji)
+            HStack(spacing: 10) {
+                recordingLink(
+                    title: "Start",
+                    systemImage: "play.fill",
+                    tint: .green,
+                    url: "simra://recording/start"
+                )
+
+                recordingLink(
+                    title: "Stop",
+                    systemImage: "stop.fill",
+                    tint: .red,
+                    url: "simra://recording/stop"
+                )
+            }
+        }
+        .padding()
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private func recordingLink(
+        title: String,
+        systemImage: String,
+        tint: Color,
+        url: String
+    ) -> some View {
+        Link(destination: URL(string: url)!) {
+            Label(title, systemImage: systemImage)
+                .font(.headline.weight(.semibold))
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 11)
+                .foregroundStyle(tint)
+                .background(
+                    tint.opacity(0.12),
+                    in: RoundedRectangle(cornerRadius: 8)
+                )
+                .overlay {
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(tint.opacity(0.35), lineWidth: 1)
+                }
         }
     }
 }
@@ -60,30 +95,31 @@ struct SimRa_Widgets: Widget {
     let kind: String = "SimRa_Widgets"
 
     var body: some WidgetConfiguration {
-        AppIntentConfiguration(kind: kind, intent: ConfigurationAppIntent.self, provider: Provider()) { entry in
+        AppIntentConfiguration(
+            kind: kind,
+            intent: ConfigurationAppIntent.self,
+            provider: Provider()
+        ) { entry in
             SimRa_WidgetsEntryView(entry: entry)
                 .containerBackground(.fill.tertiary, for: .widget)
         }
+        .configurationDisplayName("SimRa")
+        .description("Start or stop a SimRa recording.")
+        .supportedFamilies([
+            .systemSmall,
+            .systemMedium
+        ])
     }
 }
 
 extension ConfigurationAppIntent {
-    fileprivate static var smiley: ConfigurationAppIntent {
-        let intent = ConfigurationAppIntent()
-        intent.favoriteEmoji = "😀"
-        return intent
-    }
-    
-    fileprivate static var starEyes: ConfigurationAppIntent {
-        let intent = ConfigurationAppIntent()
-        intent.favoriteEmoji = "🤩"
-        return intent
+    fileprivate static var preview: ConfigurationAppIntent {
+        ConfigurationAppIntent()
     }
 }
 
 #Preview(as: .systemSmall) {
     SimRa_Widgets()
 } timeline: {
-    SimpleEntry(date: .now, configuration: .smiley)
-    SimpleEntry(date: .now, configuration: .starEyes)
+    SimpleEntry(date: .now, configuration: .preview)
 }
