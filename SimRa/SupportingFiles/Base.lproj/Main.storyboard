@@ -18,7 +18,7 @@
                         <autoresizingMask key="autoresizingMask" flexibleMaxX="YES" flexibleMaxY="YES"/>
                     </mapView>
                     <toolbarItems>
-                        <barButtonItem title="Start" id="NeF-Te-cJc">
+                        <barButtonItem systemItem="play" id="NeF-Te-cJc">
                             <connections>
                                 <action selector="playButtonPressed:" destination="BYZ-38-t0r" id="oTr-vq-4Ql"/>
                             </connections>
@@ -26,7 +26,7 @@
                         <barButtonItem systemItem="flexibleSpace" id="zon-bJ-fHC"/>
                         <barButtonItem enabled="NO" title="Item" style="plain" id="Py2-VK-zVn"/>
                         <barButtonItem systemItem="flexibleSpace" id="U3d-bw-Zah"/>
-                        <barButtonItem title="Stop" id="dZi-32-hxA">
+                        <barButtonItem systemItem="stop" id="dZi-32-hxA">
                             <connections>
                                 <action selector="stopButtonPressed:" destination="BYZ-38-t0r" id="XXl-nJ-5Ws"/>
                             </connections>

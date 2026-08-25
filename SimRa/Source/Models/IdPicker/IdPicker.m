@@ -16,6 +16,21 @@
 
 @implementation IdPicker
 
+- (void)applySystemFieldStyle {
+    self.borderStyle = UITextBorderStyleNone;
+    self.backgroundColor = [UIColor clearColor];
+    self.clearButtonMode = UITextFieldViewModeNever;
+    self.tintColor = [UIColor clearColor];
+    self.adjustsFontSizeToFitWidth = NO;
+    if (@available(iOS 13.0, *)) {
+        self.textColor = [UIColor labelColor];
+        UIImageView *chevronView = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"chevron.up.chevron.down"]];
+        chevronView.tintColor = [UIColor secondaryLabelColor];
+        self.rightView = chevronView;
+        self.rightViewMode = UITextFieldViewModeAlways;
+    }
+}
+
 - (void)initialize {
     self.pickerView = [[UIPickerView alloc] init];
     [self.pickerView setAutoresizingMask:
@@ -28,11 +43,19 @@
     self.pickerView.dataSource = self;
     self.inputView = self.pickerView;
 
-    UIBarButtonItem *doneButton =
-    [[UIBarButtonItem alloc] initWithTitle:NSLocalizedString(@"Done", @"Done")
-                                     style:UIBarButtonItemStyleDone
-                                    target:self
-                                    action:@selector(done:)];
+    UIBarButtonItem *doneButton;
+    if (@available(iOS 13.0, *)) {
+        doneButton = [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"checkmark.circle"]
+                                                      style:UIBarButtonItemStyleDone
+                                                     target:self
+                                                     action:@selector(done:)];
+        doneButton.accessibilityLabel = NSLocalizedString(@"Done", @"Done");
+    } else {
+        doneButton = [[UIBarButtonItem alloc] initWithTitle:NSLocalizedString(@"Done", @"Done")
+                                                      style:UIBarButtonItemStyleDone
+                                                     target:self
+                                                     action:@selector(done:)];
+    }
     UIBarButtonItem *flexibleSpace =
     [[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemFlexibleSpace
                                                   target:nil
@@ -43,6 +66,7 @@
                              flexibleSpace, doneButton, nil];
     [toolBar setItems:toolbarItems];
     self.inputAccessoryView = toolBar;
+    [self applySystemFieldStyle];
 }
 
 - (void)done:(UIBarButtonItem *)button {
@@ -65,6 +89,11 @@
         [self initialize];
     }
     return self;
+}
+
+- (void)awakeFromNib {
+    [super awakeFromNib];
+    [self applySystemFieldStyle];
 }
 
 - (NSInteger)numberOfComponentsInPickerView:(UIPickerView *)pickerView {
