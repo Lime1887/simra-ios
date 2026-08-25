@@ -16,9 +16,49 @@
     return (AppDelegate *)[UIApplication sharedApplication].delegate;
 }
 
+- (void)applySystemBarAppearance {
+    UIColor *barButtonTitleColor;
+    if (@available(iOS 13.0, *)) {
+        barButtonTitleColor = [UIColor labelColor];
+    } else {
+        barButtonTitleColor = [UIColor blackColor];
+    }
+    [[UIBarButtonItem appearance] setTitleTextAttributes:@{
+        NSForegroundColorAttributeName: barButtonTitleColor
+    } forState:UIControlStateNormal];
+
+    if (@available(iOS 15.0, *)) {
+        UINavigationBarAppearance *navigationAppearance = [[UINavigationBarAppearance alloc] init];
+        [navigationAppearance configureWithDefaultBackground];
+        navigationAppearance.shadowColor = [UIColor clearColor];
+        UINavigationBar *navigationBar = [UINavigationBar appearance];
+        navigationBar.standardAppearance = navigationAppearance;
+        navigationBar.compactAppearance = navigationAppearance;
+        navigationBar.scrollEdgeAppearance = navigationAppearance;
+
+        UIToolbarAppearance *toolbarAppearance = [[UIToolbarAppearance alloc] init];
+        [toolbarAppearance configureWithDefaultBackground];
+        toolbarAppearance.shadowColor = [UIColor clearColor];
+        UIToolbar *toolbar = [UIToolbar appearance];
+        toolbar.standardAppearance = toolbarAppearance;
+        toolbar.scrollEdgeAppearance = toolbarAppearance;
+    } else {
+        UINavigationBar *navigationBar = [UINavigationBar appearance];
+        navigationBar.translucent = YES;
+        [navigationBar setBackgroundImage:nil forBarMetrics:UIBarMetricsDefault];
+        navigationBar.shadowImage = [UIImage new];
+
+        UIToolbar *toolbar = [UIToolbar appearance];
+        toolbar.translucent = YES;
+        [toolbar setBackgroundImage:nil forToolbarPosition:UIBarPositionAny barMetrics:UIBarMetricsDefault];
+        [toolbar setShadowImage:[UIImage new] forToolbarPosition:UIBarPositionAny];
+    }
+}
+
 - (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)launchOptions {
     self.defaults = [NSUserDefaults standardUserDefaults];
     [self createPrefsFiles];
+    [self applySystemBarAppearance];
 
     NSLog(@"%@",[[NSUserDefaults standardUserDefaults] dictionaryRepresentation]);
     self.regions = [[Regions alloc] init];
