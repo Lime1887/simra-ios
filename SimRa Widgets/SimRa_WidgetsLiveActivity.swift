@@ -10,22 +10,24 @@ import ActivityKit
 import WidgetKit
 import SwiftUI
 
-struct SimRa_WidgetsAttributes: ActivityAttributes {
-    public struct ContentState: Codable, Hashable {
-        // Dynamic stateful properties about your activity go here!
-        var emoji: String
+@available(iOS 16.2, *)
+struct SimRaRecordingAttributes: ActivityAttributes {
+    struct ContentState: Codable, Hashable {
+        let elapsedSeconds: Int
+        let distanceMeters: Int
+        let incidents: Int
     }
 
-    // Fixed non-changing properties about your activity go here!
-    var name: String
+    let tripId: Int
+    let bikeTypeId: Int
 }
 
 struct SimRa_WidgetsLiveActivity: Widget {
     var body: some WidgetConfiguration {
-        ActivityConfiguration(for: SimRa_WidgetsAttributes.self) { context in
+        ActivityConfiguration(for: SimRaRecordingAttributes.self) { context in
             // Lock screen/banner UI goes here
             VStack {
-                Text("Hello \(context.state.emoji)")
+                Text("Hello \(context.state.elapsedSeconds)")
             }
             .activityBackgroundTint(Color.cyan)
             .activitySystemActionForegroundColor(Color.black)
@@ -41,15 +43,15 @@ struct SimRa_WidgetsLiveActivity: Widget {
                     Text("Trailing")
                 }
                 DynamicIslandExpandedRegion(.bottom) {
-                    Text("Bottom \(context.state.emoji)")
+                    Text("Bottom \(context.state.distanceMeters)")
                     // more content
                 }
             } compactLeading: {
                 Text("L")
             } compactTrailing: {
-                Text("T \(context.state.emoji)")
+                Text("T \(context.state.elapsedSeconds)")
             } minimal: {
-                Text(context.state.emoji)
+                Text("\(context.state.elapsedSeconds)")
             }
             .widgetURL(URL(string: "http://www.apple.com"))
             .keylineTint(Color.red)
@@ -57,25 +59,33 @@ struct SimRa_WidgetsLiveActivity: Widget {
     }
 }
 
-extension SimRa_WidgetsAttributes {
-    fileprivate static var preview: SimRa_WidgetsAttributes {
-        SimRa_WidgetsAttributes(name: "World")
+extension SimRaRecordingAttributes {
+    fileprivate static var preview: SimRaRecordingAttributes {
+        SimRaRecordingAttributes(tripId: 1, bikeTypeId: 1)
     }
 }
 
-extension SimRa_WidgetsAttributes.ContentState {
-    fileprivate static var smiley: SimRa_WidgetsAttributes.ContentState {
-        SimRa_WidgetsAttributes.ContentState(emoji: "😀")
+extension SimRaRecordingAttributes.ContentState {
+    fileprivate static var smiley: SimRaRecordingAttributes.ContentState {
+        SimRaRecordingAttributes.ContentState(
+            elapsedSeconds: 120,
+            distanceMeters: 340,
+            incidents: 0
+        )
      }
      
-     fileprivate static var starEyes: SimRa_WidgetsAttributes.ContentState {
-         SimRa_WidgetsAttributes.ContentState(emoji: "🤩")
+     fileprivate static var starEyes: SimRaRecordingAttributes.ContentState {
+         SimRaRecordingAttributes.ContentState(
+             elapsedSeconds: 480,
+             distanceMeters: 2700,
+             incidents: 2
+         )
      }
 }
 
-#Preview("Notification", as: .content, using: SimRa_WidgetsAttributes.preview) {
+#Preview("Notification", as: .content, using: SimRaRecordingAttributes.preview) {
    SimRa_WidgetsLiveActivity()
 } contentStates: {
-    SimRa_WidgetsAttributes.ContentState.smiley
-    SimRa_WidgetsAttributes.ContentState.starEyes
+    SimRaRecordingAttributes.ContentState.smiley
+    SimRaRecordingAttributes.ContentState.starEyes
 }

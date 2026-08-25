@@ -35,7 +35,7 @@
                     <navigationItem key="navigationItem" title="SimRa" id="yDl-6c-Zif">
                         <barButtonItem key="leftBarButtonItem" title="Settings" id="hzM-QB-nuc">
                             <connections>
-                                <segue destination="Zrj-ys-gys" kind="show" id="C7l-ZL-GdY"/>
+                                <segue destination="Zrj-ys-gys" kind="show" identifier="showSettings" id="C7l-ZL-GdY"/>
                             </connections>
                         </barButtonItem>
                         <barButtonItem key="rightBarButtonItem" title="Trips" id="5h9-tM-U6A">
@@ -1686,39 +1686,23 @@ from www.flaticon.com</string>
         <scene sceneID="IME-Gp-EQi">
             <objects>
                 <viewController id="j7e-Gg-2dc" customClass="TripEditVC" sceneMemberID="viewController">
-                    <stackView key="view" opaque="NO" contentMode="scaleToFill" axis="vertical" id="hU6-OF-AH2">
+                    <view key="view" contentMode="scaleToFill" id="hU6-OF-AH2">
                         <rect key="frame" x="0.0" y="0.0" width="320" height="568"/>
                         <autoresizingMask key="autoresizingMask" flexibleMaxX="YES" flexibleMaxY="YES"/>
-                        <subviews>
-                            <mapView clipsSubviews="YES" multipleTouchEnabled="YES" contentMode="scaleToFill" mapType="standard" translatesAutoresizingMaskIntoConstraints="NO" id="eWY-ed-XQD">
-                                <rect key="frame" x="0.0" y="0.0" width="320" height="568"/>
-                                <gestureRecognizers/>
-                                <connections>
-                                    <outletCollection property="gestureRecognizers" destination="mpp-Fs-roo" appends="YES" id="76k-UV-agm"/>
-                                </connections>
-                            </mapView>
-                        </subviews>
                         <viewLayoutGuide key="safeArea" id="a1x-xk-P31"/>
-                    </stackView>
+                    </view>
                     <navigationItem key="navigationItem" title="Edit Trip" id="1cV-GU-tdF">
                         <barButtonItem key="rightBarButtonItem" title="Clip" id="VHZ-9D-W3q">
                             <connections>
-                                <action selector="donePressed:" destination="j7e-Gg-2dc" id="iGp-V2-2T8"/>
                             </connections>
                         </barButtonItem>
                     </navigationItem>
                     <connections>
-                        <outlet property="mapView" destination="eWY-ed-XQD" id="9z9-3q-trU"/>
                         <segue destination="Mbe-On-WHO" kind="show" identifier="editAnnotation:" id="nkt-0L-Xb6"/>
                         <segue destination="U6v-wH-DyA" kind="show" identifier="tripDetail:" id="0bz-zV-iEw"/>
                     </connections>
                 </viewController>
                 <placeholder placeholderIdentifier="IBFirstResponder" id="pXh-OI-oDT" userLabel="First Responder" sceneMemberID="firstResponder"/>
-                <pongPressGestureRecognizer allowableMovement="10" minimumPressDuration="0.5" id="mpp-Fs-roo">
-                    <connections>
-                        <action selector="longPressed:" destination="j7e-Gg-2dc" id="Ece-gt-ACR"/>
-                    </connections>
-                </pongPressGestureRecognizer>
             </objects>
             <point key="canvasLocation" x="2989" y="-1194"/>
         </scene>

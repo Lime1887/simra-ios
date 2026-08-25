@@ -49,7 +49,42 @@
 		84DD1EC5224CEAB6004895F9 /* AnnotationView.m in Sources */ = {isa = PBXBuildFile; fileRef = 84DD1EC4224CEAB6004895F9 /* AnnotationView.m */; };
 		84E36109224E0721003847E8 /* TripEditVC.m in Sources */ = {isa = PBXBuildFile; fileRef = 84E36108224E0721003847E8 /* TripEditVC.m */; };
 		84E3610C224E0759003847E8 /* AnnotationTVC.m in Sources */ = {isa = PBXBuildFile; fileRef = 84E3610B224E0759003847E8 /* AnnotationTVC.m */; };
+		9F18878D303DBCC50014F58C /* TripEditView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F18878C303DBCBB0014F58C /* TripEditView.swift */; };
+		9F18878F303DDCEA0014F58C /* SimRaLiveActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F18878E303DDCEA0014F58C /* SimRaLiveActivity.swift */; };
+		9F188791303DE0AF0014F58C /* SimRaWidgetBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F188790303DE0AF0014F58C /* SimRaWidgetBundle.swift */; };
+		9F188795303DE7CD0014F58C /* SimRaRecordingLiveActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F188794303DE7CD0014F58C /* SimRaRecordingLiveActivity.swift */; };
+		9F18879E303DEC500014F58C /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 9F18879D303DEC500014F58C /* WidgetKit.framework */; };
+		9F1887A0303DEC500014F58C /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 9F18879F303DEC500014F58C /* SwiftUI.framework */; };
+		9F1887B1303DEC500014F58C /* SimRa WidgetsExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 9F18879C303DEC500014F58C /* SimRa WidgetsExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		A4FAE8452E5E1EC1009B1FA9 /* ModernRecordActionButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4FAE8442E5E1EC1009B1FA9 /* ModernRecordActionButton.swift */; };
+		B7A100010000000000000001 /* RecordingShortcutBridge.m in Sources */ = {isa = PBXBuildFile; fileRef = B7A100020000000000000002 /* RecordingShortcutBridge.m */; };
+		B7A100030000000000000003 /* RecordingAppIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7A100040000000000000004 /* RecordingAppIntents.swift */; };
 /* End PBXBuildFile section */
+
+/* Begin PBXBuildRule section */
+		9F188796303DEAEF0014F58C /* PBXBuildRule */ = {
+			isa = PBXBuildRule;
+			compilerSpec = com.apple.compilers.proxy.script;
+			fileType = folder.rkassets;
+			inputFiles = (
+			);
+			isEditable = 1;
+			outputFiles = (
+			);
+			script = "# <com.apple.build-tasks.compile-rk-assets.xcplugin>\n";
+		};
+		9F188797303DEAFE0014F58C /* PBXBuildRule */ = {
+			isa = PBXBuildRule;
+			compilerSpec = com.apple.compilers.proxy.script;
+			fileType = folder.rkassets;
+			inputFiles = (
+			);
+			isEditable = 1;
+			outputFiles = (
+			);
+			script = "# <com.apple.build-tasks.compile-rk-assets.xcplugin>\n";
+		};
+/* End PBXBuildRule section */
 
 /* Begin PBXContainerItemProxy section */
 		84DD1E9F224C0028004895F9 /* PBXContainerItemProxy */ = {
@@ -66,7 +101,28 @@
 			remoteGlobalIDString = 84DD1E82224C0027004895F9;
 			remoteInfo = simra;
 		};
+		9F1887AF303DEC500014F58C /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 84DD1E7B224C0027004895F9 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 9F18879B303DEC500014F58C;
+			remoteInfo = "SimRa WidgetsExtension";
+		};
 /* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		9F1887B6303DEC500014F58C /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				9F1887B1303DEC500014F58C /* SimRa WidgetsExtension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		471BDB63EC85DA7802557828 /* Pods-SimRa.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-SimRa.release.xcconfig"; path = "Pods/Target Support Files/Pods-SimRa/Pods-SimRa.release.xcconfig"; sourceTree = "<group>"; };
@@ -152,10 +208,35 @@
 		84E36108224E0721003847E8 /* TripEditVC.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = TripEditVC.m; sourceTree = "<group>"; };
 		84E3610A224E0759003847E8 /* AnnotationTVC.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = AnnotationTVC.h; sourceTree = "<group>"; };
 		84E3610B224E0759003847E8 /* AnnotationTVC.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = AnnotationTVC.m; sourceTree = "<group>"; };
+		9F18878C303DBCBB0014F58C /* TripEditView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TripEditView.swift; sourceTree = "<group>"; };
+		9F18878E303DDCEA0014F58C /* SimRaLiveActivity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SimRaLiveActivity.swift; sourceTree = "<group>"; };
+		9F188790303DE0AF0014F58C /* SimRaWidgetBundle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SimRaWidgetBundle.swift; sourceTree = "<group>"; };
+		9F188794303DE7CD0014F58C /* SimRaRecordingLiveActivity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SimRaRecordingLiveActivity.swift; sourceTree = "<group>"; };
+		9F18879C303DEC500014F58C /* SimRa WidgetsExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = "SimRa WidgetsExtension.appex"; sourceTree = BUILT_PRODUCTS_DIR; };
+		9F18879D303DEC500014F58C /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
+		9F18879F303DEC500014F58C /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
 		A0C9087B2ECD0B43009FD4E8 /* Hash-Suffix.h */ = {isa = PBXFileReference; lastKnownFileType = text; path = "Hash-Suffix.h"; sourceTree = "<group>"; };
+		A4FAE8442E5E1EC1009B1FA9 /* ModernRecordActionButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ModernRecordActionButton.swift; sourceTree = "<group>"; };
 		B4A6EED3F7222BB930BCA946 /* Pods_SimRa.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_SimRa.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		B7A100020000000000000002 /* RecordingShortcutBridge.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = RecordingShortcutBridge.m; sourceTree = "<group>"; };
+		B7A100040000000000000004 /* RecordingAppIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingAppIntents.swift; sourceTree = "<group>"; };
+		B7A100050000000000000005 /* RecordingShortcutBridge.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = RecordingShortcutBridge.h; sourceTree = "<group>"; };
 		CB902EA20381AAA6CCB33C6D /* Pods-SimRa.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-SimRa.debug.xcconfig"; path = "Pods/Target Support Files/Pods-SimRa/Pods-SimRa.debug.xcconfig"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		9F1887B2303DEC500014F58C /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 9F18879B303DEC500014F58C /* SimRa WidgetsExtension */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		9F1887A1303DEC500014F58C /* SimRa Widgets */ = {isa = PBXFileSystemSynchronizedRootGroup; exceptions = (9F1887B2303DEC500014F58C /* PBXFileSystemSynchronizedBuildFileExceptionSet */, ); explicitFileTypes = {}; explicitFolders = (); path = "SimRa Widgets"; sourceTree = "<group>"; };
+/* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		84DD1E80224C0027004895F9 /* Frameworks */ = {
@@ -180,6 +261,15 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		9F188799303DEC500014F58C /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				9F1887A0303DEC500014F58C /* SwiftUI.framework in Frameworks */,
+				9F18879E303DEC500014F58C /* WidgetKit.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -196,6 +286,8 @@
 			isa = PBXGroup;
 			children = (
 				B4A6EED3F7222BB930BCA946 /* Pods_SimRa.framework */,
+				9F18879D303DEC500014F58C /* WidgetKit.framework */,
+				9F18879F303DEC500014F58C /* SwiftUI.framework */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
@@ -264,6 +356,10 @@
 				6383AC662657F3F70038F3AE /* SimRa-Bridging-Header.h */,
 				6383AC6C2657F48D0038F3AE /* Constants.swift */,
 				63882B7E265C474400E147D9 /* Extensions.swift */,
+				A4FAE8442E5E1EC1009B1FA9 /* ModernRecordActionButton.swift */,
+				B7A100020000000000000002 /* RecordingShortcutBridge.m */,
+				B7A100050000000000000005 /* RecordingShortcutBridge.h */,
+				B7A100040000000000000004 /* RecordingAppIntents.swift */,
 				63143E5626665AD000997995 /* Enums.swift */,
 			);
 			path = Utils;
@@ -319,6 +415,7 @@
 			children = (
 				84E36107224E0721003847E8 /* TripEditVC.h */,
 				84E36108224E0721003847E8 /* TripEditVC.m */,
+				9F18878C303DBCBB0014F58C /* TripEditView.swift */,
 			);
 			path = TripEdit;
 			sourceTree = "<group>";
@@ -373,6 +470,9 @@
 				84DD1EC1224CD9BF004895F9 /* Trips.m */,
 				84DD1EBD224CD9A6004895F9 /* Trip.h */,
 				84DD1EBE224CD9A6004895F9 /* Trip.m */,
+				9F18878E303DDCEA0014F58C /* SimRaLiveActivity.swift */,
+				9F188790303DE0AF0014F58C /* SimRaWidgetBundle.swift */,
+				9F188794303DE7CD0014F58C /* SimRaRecordingLiveActivity.swift */,
 			);
 			path = Trips;
 			sourceTree = "<group>";
@@ -473,6 +573,7 @@
 				84DD1E85224C0027004895F9 /* SimRa */,
 				84DD1EA1224C0028004895F9 /* SimRaTests */,
 				84DD1EAC224C0028004895F9 /* SimRaUITests */,
+				9F1887A1303DEC500014F58C /* SimRa Widgets */,
 				84DD1E84224C0027004895F9 /* Products */,
 				288809C55A11C3C4AE475945 /* Pods */,
 				4B157F66407423D825C34D65 /* Frameworks */,
@@ -485,6 +586,7 @@
 				84DD1E83224C0027004895F9 /* SimRa.app */,
 				84DD1E9E224C0028004895F9 /* SimRaTests.xctest */,
 				84DD1EA9224C0028004895F9 /* SimRaUITests.xctest */,
+				9F18879C303DEC500014F58C /* SimRa WidgetsExtension.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -529,10 +631,14 @@
 				84DD1E80224C0027004895F9 /* Frameworks */,
 				84DD1E81224C0027004895F9 /* Resources */,
 				5CEC94382466568DEB810719 /* [CP] Embed Pods Frameworks */,
+				9F1887B6303DEC500014F58C /* Embed Foundation Extensions */,
 			);
 			buildRules = (
+				9F188797303DEAFE0014F58C /* PBXBuildRule */,
+				9F188796303DEAEF0014F58C /* PBXBuildRule */,
 			);
 			dependencies = (
+				9F1887B0303DEC500014F58C /* PBXTargetDependency */,
 			);
 			name = SimRa;
 			productName = simra;
@@ -575,12 +681,35 @@
 			productReference = 84DD1EA9224C0028004895F9 /* SimRaUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
 		};
+		9F18879B303DEC500014F58C /* SimRa WidgetsExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 9F1887B3303DEC500014F58C /* Build configuration list for PBXNativeTarget "SimRa WidgetsExtension" */;
+			buildPhases = (
+				9F188798303DEC500014F58C /* Sources */,
+				9F188799303DEC500014F58C /* Frameworks */,
+				9F18879A303DEC500014F58C /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				9F1887A1303DEC500014F58C /* SimRa Widgets */,
+			);
+			name = "SimRa WidgetsExtension";
+			packageProductDependencies = (
+			);
+			productName = "SimRa WidgetsExtension";
+			productReference = 9F18879C303DEC500014F58C /* SimRa WidgetsExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
 		84DD1E7B224C0027004895F9 /* Project object */ = {
 			isa = PBXProject;
 			attributes = {
+				LastSwiftUpdateCheck = 2660;
 				LastUpgradeCheck = 1330;
 				ORGANIZATIONNAME = "Mobile Cloud Computing an der Fakultät IV (Elektrotechnik und Informatik) der TU Berlin";
 				TargetAttributes = {
@@ -601,6 +730,9 @@
 						CreatedOnToolsVersion = 10.2;
 						TestTargetID = 84DD1E82224C0027004895F9;
 					};
+					9F18879B303DEC500014F58C = {
+						CreatedOnToolsVersion = 26.6;
+					};
 				};
 			};
 			buildConfigurationList = 84DD1E7E224C0027004895F9 /* Build configuration list for PBXProject "SimRa" */;
@@ -620,6 +752,7 @@
 				84DD1E82224C0027004895F9 /* SimRa */,
 				84DD1E9D224C0028004895F9 /* SimRaTests */,
 				84DD1EA8224C0028004895F9 /* SimRaUITests */,
+				9F18879B303DEC500014F58C /* SimRa WidgetsExtension */,
 			);
 		};
 /* End PBXProject section */
@@ -645,6 +778,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		84DD1EA7224C0028004895F9 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		9F18879A303DEC500014F58C /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -701,10 +841,12 @@
 			buildActionMask = 2147483647;
 			files = (
 				6383AC752657FD2C0038F3AE /* UserPreferences.swift in Sources */,
+				9F18878D303DBCC50014F58C /* TripEditView.swift in Sources */,
 				8470352C23D6D0810041AAFB /* Region.m in Sources */,
 				84DD1E8B224C0027004895F9 /* ViewController.m in Sources */,
 				63DB6241269F0EC800E09EC6 /* DeviceTableViewCell.m in Sources */,
 				84DD1EBF224CD9A6004895F9 /* Trip.m in Sources */,
+				9F188795303DE7CD0014F58C /* SimRaRecordingLiveActivity.swift in Sources */,
 				840E20B0224D190400488B31 /* SettingsTVC.m in Sources */,
 				840EF31F2817EB78001B6603 /* API.m in Sources */,
 				84E36109224E0721003847E8 /* TripEditVC.m in Sources */,
@@ -733,7 +875,12 @@
 				8421D6932254B6F40056B62C /* NSTimeInterval+hms.m in Sources */,
 				8421D6962254BAA30056B62C /* DSBarChart.m in Sources */,
 				8470352F23D6D0DA0041AAFB /* Regions.m in Sources */,
+				9F18878F303DDCEA0014F58C /* SimRaLiveActivity.swift in Sources */,
 				6383AC6D2657F48D0038F3AE /* Constants.swift in Sources */,
+				9F188791303DE0AF0014F58C /* SimRaWidgetBundle.swift in Sources */,
+				A4FAE8452E5E1EC1009B1FA9 /* ModernRecordActionButton.swift in Sources */,
+				B7A100010000000000000001 /* RecordingShortcutBridge.m in Sources */,
+				B7A100030000000000000003 /* RecordingAppIntents.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -753,6 +900,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		9F188798303DEC500014F58C /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -765,6 +919,11 @@
 			isa = PBXTargetDependency;
 			target = 84DD1E82224C0027004895F9 /* SimRa */;
 			targetProxy = 84DD1EAA224C0028004895F9 /* PBXContainerItemProxy */;
+		};
+		9F1887B0303DEC500014F58C /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 9F18879B303DEC500014F58C /* SimRa WidgetsExtension */;
+			targetProxy = 9F1887AF303DEC500014F58C /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -935,6 +1094,7 @@
 				);
 				GCC_PREPROCESSOR_DEFINITIONS_NOT_USED_IN_PRECOMPS = "";
 				INFOPLIST_FILE = simra/SupportingFiles/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -964,6 +1124,7 @@
 				GCC_PREPROCESSOR_DEFINITIONS = "$(inherited)";
 				GCC_PREPROCESSOR_DEFINITIONS_NOT_USED_IN_PRECOMPS = "";
 				INFOPLIST_FILE = simra/SupportingFiles/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -986,6 +1147,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_TEAM = C652JFWU23;
 				INFOPLIST_FILE = simraTests/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -1006,6 +1168,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_TEAM = C652JFWU23;
 				INFOPLIST_FILE = simraTests/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -1025,6 +1188,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_TEAM = C652JFWU23;
 				INFOPLIST_FILE = simraUITests/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -1044,6 +1208,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_TEAM = C652JFWU23;
 				INFOPLIST_FILE = simraUITests/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -1053,6 +1218,86 @@
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				TARGETED_DEVICE_FAMILY = "1,2";
 				TEST_TARGET_NAME = simra;
+			};
+			name = Release;
+		};
+		9F1887B4303DEC500014F58C /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = CGLX6ASXCV;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "SimRa Widgets/Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "SimRa Widgets";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "Copyright © 2026 Mobile Cloud Computing an der Fakultät IV (Elektrotechnik und Informatik) der TU Berlin. All rights reserved.";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.5;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "de.tu-berlin.mcc.simra.SimRa-Widgets";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		9F1887B5303DEC500014F58C /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME = WidgetBackground;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = CGLX6ASXCV;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "SimRa Widgets/Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "SimRa Widgets";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "Copyright © 2026 Mobile Cloud Computing an der Fakultät IV (Elektrotechnik und Informatik) der TU Berlin. All rights reserved.";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.5;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "de.tu-berlin.mcc.simra.SimRa-Widgets";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Release;
 		};
@@ -1091,6 +1336,15 @@
 			buildConfigurations = (
 				84DD1EB9224C0028004895F9 /* Debug */,
 				84DD1EBA224C0028004895F9 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		9F1887B3303DEC500014F58C /* Build configuration list for PBXNativeTarget "SimRa WidgetsExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				9F1887B4303DEC500014F58C /* Debug */,
+				9F1887B5303DEC500014F58C /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

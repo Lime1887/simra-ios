@@ -32,6 +32,33 @@
 
 @implementation TripSettingsTVC
 
+- (void)viewDidLoad {
+    [super viewDidLoad];
+    self.view.tintColor = [UIColor systemBlueColor];
+    if (@available(iOS 13.0, *)) {
+        self.tableView.backgroundColor = [UIColor systemGroupedBackgroundColor];
+    }
+    self.tableView.separatorStyle = UITableViewCellSeparatorStyleNone;
+    self.tableView.rowHeight = 56.0;
+    self.tableView.sectionHeaderHeight = 32.0;
+    self.tableView.sectionFooterHeight = 12.0;
+    self.startSecs.minimumTrackTintColor = [UIColor systemBlueColor];
+    self.startMeters.minimumTrackTintColor = [UIColor systemBlueColor];
+    self.childSeat.onTintColor = [UIColor systemBlueColor];
+    self.trailer.onTintColor = [UIColor systemBlueColor];
+    self.AI.onTintColor = [UIColor systemBlueColor];
+    self.openBikeSensorSwitch.onTintColor = [UIColor systemBlueColor];
+}
+
+- (void)viewDidLayoutSubviews {
+    [super viewDidLayoutSubviews];
+    for (UITableViewCell *cell in self.tableView.visibleCells) {
+        if (@available(iOS 13.0, *)) {
+            cell.backgroundColor = [UIColor secondarySystemGroupedBackgroundColor];
+        }
+    }
+}
+
 - (void)viewWillAppear:(BOOL)animated {
     [super viewWillAppear:animated];
     AppDelegate *ad = [AppDelegate sharedDelegate];

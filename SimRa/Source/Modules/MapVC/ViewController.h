@@ -8,11 +8,14 @@
 
 #import <UIKit/UIKit.h>
 #import <MapKit/MapKit.h>
-#import "SimRa-Swift.h"
 
-@interface ViewController : UIViewController <MKMapViewDelegate,BluetoothDelegate>
+@class BluetoothManager;
+
+@interface ViewController : UIViewController <MKMapViewDelegate>
 
 @property (nonatomic, strong) BluetoothManager *bleManager;
 
-@end
+- (BOOL)startRecordingFromShortcut;
+- (BOOL)stopRecordingFromShortcut;
 
+@end

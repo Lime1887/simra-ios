@@ -1,14 +1,31 @@
-#if canImport(ActivityKit)
 import ActivityKit
 
 @available(iOS 16.2, *)
 public struct SimRaRecordingAttributes: ActivityAttributes {
-    public typealias ContentState = ContentState
-
     public struct ContentState: Codable, Hashable {
-        // Define properties relevant to the content state here
+        public var elapsedSeconds: Int
+        public var distanceMeters: Int
+        public var incidents: Int
+
+        public init(
+            elapsedSeconds: Int,
+            distanceMeters: Int,
+            incidents: Int
+        ) {
+            self.elapsedSeconds = elapsedSeconds
+            self.distanceMeters = distanceMeters
+            self.incidents = incidents
+        }
     }
 
-    // Define any additional properties or methods needed for the attributes here
+    public var tripId: Int
+    public var bikeTypeId: Int
+
+    public init(
+        tripId: Int,
+        bikeTypeId: Int
+    ) {
+        self.tripId = tripId
+        self.bikeTypeId = bikeTypeId
+    }
 }
-#endif

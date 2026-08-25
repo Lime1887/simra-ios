@@ -211,7 +211,6 @@
     if ([characteristic.UUID.UUIDString isEqualToString:sensorCharacteristic.UUID.UUIDString]){
         NSLog(@"Sensor characteristic:");
         NSNumber *leftSensorVal = [self.bleManager compareLeftSensorLeastSignificantBitWithBytes:byteArray];// byteArray[4];
-        NSNumber * rightSensorVal = [self.bleManager compareRightSensorLeastSignificantBitWithBytes:byteArray];//byteArray[6];
         [self setClosePassBarColorWithDistance:[leftSensorVal intValue]];
     }
     else {
@@ -291,10 +290,6 @@
     NSLog(@"res: %.f", fmin(5,10));
     int maxColorValue = fmin(distance,200);
     float normalizedValue = maxColorValue / 2;
-    float red = (255 * (100 - normalizedValue)) / 100;
-    float green = (255 * normalizedValue) / 100;
-    float blue = 0;
-    UIColor * barColor = [UIColor colorWithRed:red green:green blue:blue alpha:1];
     dispatch_async(dispatch_get_main_queue(), ^{
         [self.barProgressView setProgressTintColor:[UIColor grayColor]];
 

@@ -184,20 +184,28 @@ extension Utility {
         createPlist(fileName: regionBasedProfileName)
     }
 
+    private static func writeProfileValue(key: String) {
+        guard let value = getUserDefaults().value(forKey: key) else {
+            return
+        }
+
+        writeToProfile(key: key, val: value)
+    }
+
     @objc static func writeProfile() {
-        writeToProfile(key: "ageId", val: getUserDefaults().value(forKey: "ageId"))
-        writeToProfile(key: "sexId", val: getUserDefaults().value(forKey: "sexId"))
-        writeToProfile(key: "experienceId", val: getUserDefaults().value(forKey: "experienceId"))
-        writeToProfile(key: "behaviour", val: getUserDefaults().value(forKey: "behaviour"))
-        writeToProfile(key: "behaviourValue", val: getUserDefaults().value(forKey: "behaviourValue"))
-        writeToProfile(key: "totalIdle", val: getUserDefaults().value(forKey: "totalIdle"))
-        writeToProfile(key: "numberOfScary", val: getUserDefaults().value(forKey: "numberOfScary"))
-        writeToProfile(key: "totalRides", val: getUserDefaults().value(forKey: "totalRides"))
-        writeToProfile(key: "totalLength", val: getUserDefaults().value(forKey: "totalLength"))
-        writeToProfile(key: "totalDuration", val: getUserDefaults().value(forKey: "totalDuration"))
-        writeToProfile(key: "totalIncidents", val: getUserDefaults().value(forKey: "totalIncidents"))
-        writeToProfile(key: "totalSlots", val: getUserDefaults().value(forKey: "totalSlots"))
-        writeToProfile(key: "regionId", val: getUserDefaults().value(forKey: "regionId"))
+        writeProfileValue(key: "ageId")
+        writeProfileValue(key: "sexId")
+        writeProfileValue(key: "experienceId")
+        writeProfileValue(key: "behaviour")
+        writeProfileValue(key: "behaviourValue")
+        writeProfileValue(key: "totalIdle")
+        writeProfileValue(key: "numberOfScary")
+        writeProfileValue(key: "totalRides")
+        writeProfileValue(key: "totalLength")
+        writeProfileValue(key: "totalDuration")
+        writeProfileValue(key: "totalIncidents")
+        writeProfileValue(key: "totalSlots")
+        writeProfileValue(key: "regionId")
     }
 
     @objc static func writeRegionBasedProfile() {

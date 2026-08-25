@@ -38,7 +38,7 @@
 "Finish" = "Ziel";
 
 /* How To */
-"How To" = "How To";
+"How To" = "Anleitung";
 
 /* If not, you may access it via Settings/How To */
 "If not, you may access it via Settings/How To later" = "Wenn nicht, können Sie dies später unter Einstellungen/How To abrufen";
@@ -74,7 +74,7 @@
 "Please choose a Region" = "Bitte wählen Sie eine Region aus";
 
 /* Profile Running */
-"Profile Running" = "Profile Running";
+"Profile Running" = "Profil wird ausgeführt";
 
 /* Profile UploadError */
 "Profile UploadError" = "Profile UploadError";
@@ -89,7 +89,7 @@
 "Recording" = "Aufzeichnung";
 
 /* Running */
-"Running" = "Running";
+"Running" = "Läuft";
 
 /* SimRa */
 "SimRa" = "SimRa";
@@ -119,7 +119,7 @@
 "Uploaded" = "Hochgeladen";
 
 /* UploadError */
-"UploadError" = "UploadError";
+"UploadError" = "Fehler beim Hochladen";
 
 /* Would you like to view the User Manual now? */
 "Would you like to view the User Manual now?" = "Möchten Sie jetzt die Anleitung ansehen?";

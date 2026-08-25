@@ -89,7 +89,7 @@ import TTGSnackbar
     /**
      The method provides for connecting the special peripheral
      
-     - parameter peripher: The peripheral you want to connect
+     - parameter peripheral: The peripheral you want to connect
      */
     @objc func connectPeripheral(_ peripheral: CBPeripheral) {
         if !isConnecting {
@@ -371,7 +371,7 @@ import TTGSnackbar
                 delegate?.didFailToReadValueForCharacteristic?(error!)
             return
         }
-        guard let data = characteristic.value else {
+        guard characteristic.value != nil else {
             delegate?.didFailToReadValueForCharacteristic?(error!)
 
             return

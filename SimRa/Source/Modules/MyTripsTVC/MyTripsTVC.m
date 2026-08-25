@@ -30,8 +30,21 @@
 
 @implementation MyTripsTVC
 
-- (UIColor *)systemTintColor {
-    return [UIColor systemBlueColor];
+- (UIBarButtonItem *)iconBarButtonWithSystemName:(NSString *)systemName
+                                    fallbackTitle:(NSString *)fallbackTitle
+                                           action:(SEL)action {
+    if (@available(iOS 13.0, *)) {
+        UIBarButtonItem *item = [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:systemName]
+                                                                  style:UIBarButtonItemStylePlain
+                                                                 target:self
+                                                                 action:action];
+        item.accessibilityLabel = fallbackTitle;
+        return item;
+    }
+    return [[UIBarButtonItem alloc] initWithTitle:fallbackTitle
+                                            style:UIBarButtonItemStylePlain
+                                           target:self
+                                           action:action];
 }
 
 - (void)getTripInfos {
@@ -70,30 +83,18 @@ NSInteger revertedSort(id num1, id num2, void *context) {
 - (void)viewDidLoad {
     [super viewDidLoad];
 
-    self.view.tintColor = [self systemTintColor];
-    self.tableView.separatorInset = UIEdgeInsetsMake(0.0, 20.0, 0.0, 20.0);
-    if (@available(iOS 13.0, *)) {
-        self.tableView.backgroundColor = [UIColor systemGroupedBackgroundColor];
-    }
-
-    self.editButton = [[UIBarButtonItem alloc]
-                       initWithBarButtonSystemItem:UIBarButtonSystemItemEdit
-                       target:self
-                       action:@selector(editToggle:)];
-    self.doneButton = [[UIBarButtonItem alloc]
-                       initWithBarButtonSystemItem:UIBarButtonSystemItemDone
-                       target:self
-                       action:@selector(editToggle:)];
-    self.allButton = [[UIBarButtonItem alloc]
-                      initWithTitle:NSLocalizedString(@"All", @"Table Select All")
-                      style:UIBarButtonItemStylePlain
-                      target:self
-                      action:@selector(selectAll:)];
-    self.noneButton = [[UIBarButtonItem alloc]
-                       initWithTitle:NSLocalizedString(@"None", @"Table Select None")
-                       style:UIBarButtonItemStylePlain
-                       target:self
-                       action:@selector(selectNone:)];
+    self.editButton = [self iconBarButtonWithSystemName:@"square.and.pencil"
+                                          fallbackTitle:NSLocalizedString(@"Edit", @"Edit")
+                                                 action:@selector(editToggle:)];
+    self.doneButton = [self iconBarButtonWithSystemName:@"checkmark"
+                                          fallbackTitle:NSLocalizedString(@"Done", @"Done")
+                                                 action:@selector(editToggle:)];
+    self.allButton = [self iconBarButtonWithSystemName:@"checkmark.circle.fill"
+                                         fallbackTitle:NSLocalizedString(@"All", @"Table Select All")
+                                                action:@selector(selectAll:)];
+    self.noneButton = [self iconBarButtonWithSystemName:@"circle"
+                                          fallbackTitle:NSLocalizedString(@"None", @"Table Select None")
+                                                 action:@selector(selectNone:)];
 
     NSMutableArray<UIBarButtonItem *> *r = [self.navigationItem.rightBarButtonItems mutableCopy];
     if (!r) {
@@ -284,10 +285,6 @@ NSInteger revertedSort(id num1, id num2, void *context) {
 #endif
 
     cell.detailTextLabel.text = detail;
-    cell.tintColor = [self systemTintColor];
-    if (@available(iOS 13.0, *)) {
-        cell.backgroundColor = [UIColor secondarySystemGroupedBackgroundColor];
-    }
     return cell;
 }
 

@@ -210,6 +210,7 @@
 @property (strong, nonatomic) TripLocation *secondLargestZMotion;
 
 @property (strong, nonatomic) NSTimer *timer;
+@property (strong, nonatomic) NSDate *recordingStartDate;
 @end
 
 @implementation Trip
@@ -1394,6 +1395,11 @@
     self.locationsFile = [NSFileHandle fileHandleForWritingAtPath:locationsURL.path];
     self.motionsFile = [NSFileHandle fileHandleForWritingAtPath:motionsURL.path];
 
+    self.recordingStartDate = [NSDate date];
+    // Start Live Activity if supported
+    if (@available(iOS 16.2, *)) {
+        [LiveActivityManager.shared startActivityWithTripId:(int)self.identifier bikeTypeId:(int)self.bikeTypeId];
+    }
 
     if (ad.mm.isGyroAvailable) {
         [ad.mm startGyroUpdates];
@@ -1402,13 +1408,18 @@
     }
 
     ad.lm.delegate = self;
-    if (CLLocationManager.locationServicesEnabled) {
+
+    CLAuthorizationStatus status = [CLLocationManager authorizationStatus];
+
+    if (status == kCLAuthorizationStatusNotDetermined) {
+        [ad.lm requestWhenInUseAuthorization];
+    } else if (status == kCLAuthorizationStatusAuthorizedAlways || status == kCLAuthorizationStatusAuthorizedWhenInUse) {
         ad.lm.allowsBackgroundLocationUpdates = TRUE;
         ad.lm.desiredAccuracy = kCLLocationAccuracyNearestTenMeters;
         ad.lm.activityType = CLActivityTypeFitness;
         [ad.lm startUpdatingLocation];
     } else {
-        NSLog(@"no locationServicesEnabled");
+        NSLog(@"Location authorization not granted: %d", (int)status);
     }
 
     if (ad.mm.isAccelerometerAvailable) {
@@ -1505,6 +1516,21 @@
                     cr /= ACCELEROMETER_SAMPLES;
 
                     [self addAccelerationX:x y:y z:z xl:xl yl:yl zl:zl xr:xr yr:yr zr:zr cr:cr];
+                    if (@available(iOS 16.2, *)) {
+                        // Update roughly once per second based on samples and steps
+                        static int updateCounter = 0;
+                        updateCounter++;
+                        if (updateCounter >= 50) {
+                            updateCounter = 0;
+                            NSInteger distance = [self length];
+                            NSInteger incidents = [self tripValidAnnotations];
+                            NSInteger elapsed = 0;
+                            if (self.recordingStartDate) {
+                                elapsed = (NSInteger)([[NSDate date] timeIntervalSinceDate:self.recordingStartDate]);
+                            }
+                            [LiveActivityManager.shared updateWithElapsedSeconds:(int)elapsed distanceMeters:(int)distance incidents:(int)incidents];
+                        }
+                    }
                     aFill = ACCELEROMETER_SAMPLES - ACCELEROMETER_STEPS;
                 }
             } else {
@@ -1530,6 +1556,10 @@
     }
     [ad.lm stopUpdatingLocation];
     ad.lm.delegate = nil;
+
+    if (@available(iOS 16.2, *)) {
+        [LiveActivityManager.shared endActivity];
+    }
 
     [self.locationsFile closeFile];
     [self.motionsFile closeFile];
@@ -1677,6 +1707,19 @@
             [self addLocation:location withGyroData:gyroData];
             self.lastLocation = location;
         }
+    }
+}
+
+- (void)locationManagerDidChangeAuthorization:(CLLocationManager *)manager {
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+    CLAuthorizationStatus status = [CLLocationManager authorizationStatus];
+#pragma clang diagnostic pop
+    if (status == kCLAuthorizationStatusAuthorizedAlways || status == kCLAuthorizationStatusAuthorizedWhenInUse) {
+        manager.allowsBackgroundLocationUpdates = TRUE;
+        manager.desiredAccuracy = kCLLocationAccuracyNearestTenMeters;
+        manager.activityType = CLActivityTypeFitness;
+        [manager startUpdatingLocation];
     }
 }
 

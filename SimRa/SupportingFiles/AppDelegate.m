@@ -16,19 +16,75 @@
     return (AppDelegate *)[UIApplication sharedApplication].delegate;
 }
 
-- (UIColor *)systemTintColor {
-    return [UIColor systemBlueColor];
+- (UIWindow *)activeKeyWindow {
+    for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
+        if (![scene isKindOfClass:[UIWindowScene class]]) {
+            continue;
+        }
+
+        for (UIWindow *window in ((UIWindowScene *)scene).windows) {
+            if (window.isKeyWindow) {
+                return window;
+            }
+        }
+    }
+
+    return UIApplication.sharedApplication.windows.firstObject;
+}
+
+- (UIViewController *)topViewControllerFromRoot:(UIViewController *)viewController {
+    UIViewController *currentController = viewController;
+
+    while (currentController.presentedViewController) {
+        currentController = currentController.presentedViewController;
+    }
+
+    return currentController;
+}
+
+- (void)applySystemBarAppearance {
+    UIColor *barButtonTitleColor;
+    if (@available(iOS 13.0, *)) {
+        barButtonTitleColor = [UIColor labelColor];
+    } else {
+        barButtonTitleColor = [UIColor blackColor];
+    }
+    [[UIBarButtonItem appearance] setTitleTextAttributes:@{
+        NSForegroundColorAttributeName: barButtonTitleColor
+    } forState:UIControlStateNormal];
+
+    if (@available(iOS 15.0, *)) {
+        UINavigationBarAppearance *navigationAppearance = [[UINavigationBarAppearance alloc] init];
+        [navigationAppearance configureWithDefaultBackground];
+        navigationAppearance.shadowColor = [UIColor clearColor];
+        UINavigationBar *navigationBar = [UINavigationBar appearance];
+        navigationBar.standardAppearance = navigationAppearance;
+        navigationBar.compactAppearance = navigationAppearance;
+        navigationBar.scrollEdgeAppearance = navigationAppearance;
+
+        UIToolbarAppearance *toolbarAppearance = [[UIToolbarAppearance alloc] init];
+        [toolbarAppearance configureWithDefaultBackground];
+        toolbarAppearance.shadowColor = [UIColor clearColor];
+        UIToolbar *toolbar = [UIToolbar appearance];
+        toolbar.standardAppearance = toolbarAppearance;
+        toolbar.scrollEdgeAppearance = toolbarAppearance;
+    } else {
+        UINavigationBar *navigationBar = [UINavigationBar appearance];
+        navigationBar.translucent = YES;
+        [navigationBar setBackgroundImage:nil forBarMetrics:UIBarMetricsDefault];
+        navigationBar.shadowImage = [UIImage new];
+
+        UIToolbar *toolbar = [UIToolbar appearance];
+        toolbar.translucent = YES;
+        [toolbar setBackgroundImage:nil forToolbarPosition:UIBarPositionAny barMetrics:UIBarMetricsDefault];
+        [toolbar setShadowImage:[UIImage new] forToolbarPosition:UIBarPositionAny];
+    }
 }
 
 - (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)launchOptions {
-    UIColor *tintColor = [self systemTintColor];
-    self.window.tintColor = tintColor;
-    [UIBarButtonItem appearance].tintColor = tintColor;
-    [UIToolbar appearance].tintColor = tintColor;
-    [UISwitch appearance].onTintColor = tintColor;
-
     self.defaults = [NSUserDefaults standardUserDefaults];
     [self createPrefsFiles];
+    [self applySystemBarAppearance];
 
     NSLog(@"%@",[[NSUserDefaults standardUserDefaults] dictionaryRepresentation]);
     self.regions = [[Regions alloc] init];
@@ -54,7 +110,10 @@
     if ([notificationName isEqualToString:@"disconnectNotif"]){
 
         NSLog(@"Peripheral Disconnected");
-       UIViewController * topController =  [UIApplication sharedApplication].keyWindow.rootViewController.presentedViewController;
+        UIWindow *keyWindow = [self activeKeyWindow];
+        UIViewController *rootController = keyWindow.rootViewController;
+        UIViewController *topController =
+            rootController ? [self topViewControllerFromRoot:rootController] : nil;
         [UIAlertController showAlertWithTitle:@"SimRa" message:@"Device disconnected" style:UIAlertControllerStyleAlert buttonFirstTitle:@"Return" buttonFirstAction:^{} over:topController];
     }
     else if ([notificationName isEqualToString:@"characteristicNotif"]){
@@ -107,6 +166,9 @@
         @"en" : @"https://simra-backend.3s-rg.de:4998/SimRa_Instructions_IOS.pdf",
         @"de" : @"https://simra-backend.3s-rg.de:4998/SimRa_Anleitung_IOS.pdf"
     }];
+}
+
++ (void)write:(int)version {
 }
 
 @end

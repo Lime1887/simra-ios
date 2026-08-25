@@ -3,331 +3,964 @@
 //  simra
 //
 //  Created by Christoph Krey on 28.03.19.
-//  Copyright © 2019-2021 Mobile Cloud Computing an der Fakultät IV (Elektrotechnik und Informatik) der TU Berlin. All rights reserved.
+//  Copyright © 2019-2021 Mobile Cloud Computing an der Fakultät IV
+//  (Elektrotechnik und Informatik) der TU Berlin. All rights reserved.
 //
 
 #import "SettingsTVC.h"
+
 #import <MessageUI/MessageUI.h>
+#import <SSZipArchive/SSZipArchive.h>
+
 #import "IdPicker.h"
 #import "AppDelegate.h"
 #import "NSTimeInterval+hms.h"
 #import "DSBarChart.h"
 #import "SimRa-Swift.h"
-#import <SSZipArchive/SSZipArchive.h>
 #import "NSString+hashCode.h"
 #import "API.h"
 
 @interface SettingsTVC ()
-{
-    AppDelegate *ad;
-}
 
-@property (weak, nonatomic) IBOutlet UILabel *version;
-@property (weak, nonatomic) IBOutlet UITableViewCell *versionCell;
+@property (nonatomic, weak) IBOutlet UILabel *version;
+@property (nonatomic, weak) IBOutlet UITableViewCell *versionCell;
 
-@property (strong, nonatomic) UIAlertController *ac;
+@property (nonatomic, strong) UIAlertController *ac;
+@property (nonatomic, strong) UITapGestureRecognizer *versionTapGesture;
 
 @end
 
+
 @implementation SettingsTVC
+
+#pragma mark - Lifecycle
+
+- (void)viewDidLoad {
+    [super viewDidLoad];
+
+    [self configureView];
+    [self configureActionButtons];
+    [self configureVersionInteraction];
+}
 
 - (void)viewWillAppear:(BOOL)animated {
     [super viewWillAppear:animated];
-    ad = [AppDelegate sharedDelegate];
+
     [self update];
-    [self addTapGestureForVersion];
 }
-- (void)didTapOnVersion:(UITapGestureRecognizer*)sender {
-    NSLog(@"hello taps");
-    
-    [UIAlertController showAlertWithTitle: NSLocalizedString(@"Send local app data to SimRa team", @"Send local app data to SimRa team") message: NSLocalizedString(@"Attention! Only tap the Continue button, if you were asked to do so by the SimRa team. By Pressing the Upload button in the next step, you send your SimRa configuration to the SimRa team. You can also specify to upload the last 10 rides or all rides.", @"Attention! Only tap the Continue button, if you were asked to do so by the SimRa team. By Pressing the Upload button in the next step, you send your SimRa configuration to the SimRa team. You can also specify to upload the last 10 rides or all rides.") style: UIAlertControllerStyleAlert buttonFirstTitle:NSLocalizedString(@"Cancel", @"Cancel") buttonSecondTitle:NSLocalizedString(@"OK",@"OK") buttonFirstAction:^{
-        NSLog(@"Cancel pressed");
-    } buttonSecondAction:^{
-        NSLog(@"Confirm Pressed");
-        [Utility writeSimRaPrefs];
-        [self showTotalRidesAlert];
-    } over:self];
-}
--(NSString *)getTripsSizeGetAllTrips:(BOOL)allTrips{
-   
-    int totalTrips = ad.trips.tripInfos.count;
-    int count = 0;
-    long long totalBytes = 0;
-    NSFileManager *fileManager = [NSFileManager defaultManager];
-    NSURL *documentDirectoryURL = [fileManager URLsForDirectory:NSDocumentDirectory
-                                                      inDomains:NSUserDomainMask].firstObject;
-    if (!allTrips && totalTrips > minimumTripsToSend){
 
-        count = abs(totalTrips - minimumTripsToSend);
-        for (int i = totalTrips; i > count ; i --){
-            NSLog(@"%d",i);
-            NSURL *tripURL = [documentDirectoryURL URLByAppendingPathComponent:[NSString stringWithFormat:@"Trip-%d.json", i]];
-            NSURL *tripInfoURL = [documentDirectoryURL URLByAppendingPathComponent:[NSString stringWithFormat:@"TripInfo-%d.json", i]];
-            NSNumber *fileSizeValueForTripInfo = nil;
-            NSNumber *fileSizeValueForTrip = nil;
-            NSError *fileSizeError = nil;
-            [tripURL getResourceValue:&fileSizeValueForTrip
-                               forKey:NSURLFileSizeKey
-                                error:&fileSizeError];
-            [tripInfoURL getResourceValue:&fileSizeValueForTripInfo
-                                   forKey:NSURLFileSizeKey
-                                    error:&fileSizeError];
-            
-            if (fileSizeValueForTrip && fileSizeValueForTripInfo) {
-                totalBytes += [fileSizeValueForTrip longLongValue];
-                totalBytes += [fileSizeValueForTripInfo longLongValue];
-                
-            }
-            else {
-                NSLog(@"error getting size for url %@ error was %@", tripURL, fileSizeError);
-            }
-        }
-    }
-    else{
-        for (int i = 1; i <= totalTrips ; i ++){
-            NSLog(@"%d",i);
-            NSURL *tripURL = [documentDirectoryURL URLByAppendingPathComponent:[NSString stringWithFormat:@"Trip-%d.json", i]];
-            NSURL *tripInfoURL = [documentDirectoryURL URLByAppendingPathComponent:[NSString stringWithFormat:@"TripInfo-%d.json", i]];
-            NSNumber *fileSizeValueForTripInfo = nil;
-            NSNumber *fileSizeValueForTrip = nil;
-            NSError *fileSizeError = nil;
-            [tripURL getResourceValue:&fileSizeValueForTrip
-                               forKey:NSURLFileSizeKey
-                                error:&fileSizeError];
-            [tripInfoURL getResourceValue:&fileSizeValueForTripInfo
-                                   forKey:NSURLFileSizeKey
-                                    error:&fileSizeError];
-            
-            if (fileSizeValueForTrip && fileSizeValueForTripInfo) {
-                totalBytes += [fileSizeValueForTrip longLongValue];
-                totalBytes += [fileSizeValueForTripInfo longLongValue];
-                
-            }
-            else {
-                NSLog(@"error getting size for url %@ error was %@", tripURL, fileSizeError);
-            }
-        }
+#pragma mark - Appearance
+
+- (void)configureView {
+
+    if (@available(iOS 13.0, *)) {
+        self.view.tintColor = [UIColor systemBlueColor];
+        self.tableView.backgroundColor =
+            [UIColor systemGroupedBackgroundColor];
+    } else {
+        self.view.tintColor = [UIColor blueColor];
     }
 
-    
-    NSString *displayFileSize = [NSByteCountFormatter stringFromByteCount:totalBytes
-                                                               countStyle:NSByteCountFormatterCountStyleFile];
-    return displayFileSize;
+    /*
+     Let UIKit handle the system table appearance.
+     In particular, do not manually create a Liquid Glass
+     background for the navigation bar.
+     */
 
-}
--(NSString* )createZipFilesWithPath:(BOOL)allTrips{
-    //copy document folder into temp
-    //
-    NSString * documentDirectory = [Utility getDocumentDirectory];
-    NSString *tempDir = NSTemporaryDirectory();
-    NSMutableArray *pathsArr = [[NSMutableArray alloc]initWithArray:[Utility getAllDocumentsPrefLinks] copyItems:YES];
-    int totalTrips = ad.trips.tripInfos.count;
-    int count = 0;
+    self.tableView.separatorStyle =
+        UITableViewCellSeparatorStyleNone;
 
-    if (!allTrips && totalTrips > minimumTripsToSend){
-        count = abs(totalTrips - minimumTripsToSend);
-        for (int i = totalTrips; i > count ; i --){
-                NSString * pathTrip = [NSString stringWithFormat:@"%@/Trip-%d.json",Utility.getDocumentDirectory,i];
-                NSString * pathTripInfo = [NSString stringWithFormat:@"%@/TripInfo-%d.json",Utility.getDocumentDirectory,i];
-            [pathsArr addObject: pathTrip];
-            [pathsArr addObject: pathTripInfo];
-
-        }
+    if (@available(iOS 13.0, *)) {
+        self.versionCell.backgroundColor =
+            [UIColor secondarySystemGroupedBackgroundColor];
     }
-    else{
-        for (int i = 1; i <= totalTrips ; i ++){
-            NSString * pathTrip = [NSString stringWithFormat:@"%@/Trip-%d.json",Utility.getDocumentDirectory,i];
-            NSString * pathTripInfo = [NSString stringWithFormat:@"%@/TripInfo-%d.json",Utility.getDocumentDirectory,i];
-            [pathsArr addObject: pathTrip];
-            [pathsArr addObject: pathTripInfo];
-        }
-    }
-    NSString* zipfile = @"";
-    zipfile = [tempDir stringByAppendingPathComponent:[NSString stringWithFormat:@"/Logger.zip"]];
-    NSLog(@"%@",zipfile);
-    BOOL isZipCreated=[SSZipArchive createZipFileAtPath:zipfile withFilesAtPaths:pathsArr];
-    if (!isZipCreated){
-        NSLog(@"Zip file cannot be created");
-    }
-    return zipfile;
 }
 
--(void)sendZipToServerWithAllTrips:(BOOL)allTrips{
-    NSString *zipFilePath = [self createZipFilesWithPath:allTrips];
-    NSLog(@"Zip file Created at Path : %@",zipFilePath);
-    NSData *zipData = [NSData dataWithContentsOfFile:zipFilePath];
-    NSString *urlString = [NSString stringWithFormat:@"%@/debug?clientHash=%@",
-                           API.APIPrefix,
-                           NSString.clientHash];
-    urlString = [urlString stringByAddingPercentEncodingWithAllowedCharacters:[NSCharacterSet URLFragmentAllowedCharacterSet]];
-//     creating URL request to send data
-    NSMutableURLRequest *request = [[NSMutableURLRequest alloc] init];
-    [request setURL:[NSURL URLWithString:urlString]];
-    [request setHTTPMethod:@"POST"];
-    
-    NSString *boundary = @"*****";
-    NSString *lineEnd = @"\r\n";
-    NSString *twoHyphens = @"--";
-    
-    [request addValue:@"Keep-Alive" forHTTPHeaderField:@"Connection"];
-    NSString *contentType = [NSString stringWithFormat:@"multipart/form-data;boundary=%@",boundary];
-    [request addValue:contentType forHTTPHeaderField: @"Content-Type"];
-//     adding content as a body to post
-    NSMutableData *body = [NSMutableData data];
-    [body appendData:[[NSString stringWithFormat:@"%@%@%@",twoHyphens,boundary,lineEnd] dataUsingEncoding:NSUTF8StringEncoding]];
-    NSString *header = [NSString stringWithFormat:@"Content-Disposition: form-data; name=\"file\";filename=\"zip.zip\"\r\n"];
-    [body appendData:[[NSString stringWithString:header] dataUsingEncoding:NSUTF8StringEncoding]];
-    [body appendData:[[NSString stringWithFormat:@"%@",lineEnd] dataUsingEncoding:NSUTF8StringEncoding]];
-    [body appendData:[NSData dataWithData:zipData]];
-    [body appendData:[[NSString stringWithFormat:@"%@",lineEnd] dataUsingEncoding:NSUTF8StringEncoding]];
-    [body appendData:[[NSString stringWithFormat:@"%@%@%@%@",twoHyphens,boundary,twoHyphens,lineEnd] dataUsingEncoding:NSUTF8StringEncoding]];
-    [request setHTTPBody:body];
-    NSURLSession *session = [NSURLSession sharedSession];
-    NSURLSessionDataTask *dataTask = [session dataTaskWithRequest:request
-                                                completionHandler:^(NSData *data, NSURLResponse *response, NSError *error)
-                                      {
-        if (error != nil){
-            NSLog(@"upload error:%@",error);
-        }
-        else{
-        NSHTTPURLResponse *httpResponse = (NSHTTPURLResponse *) response;
-        NSLog(@"response status code: %ld", (long)[httpResponse statusCode]);
-            if (httpResponse.statusCode == 200){
-                NSLog(@"upload success：%@",[[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding]);
-                dispatch_async(dispatch_get_main_queue(), ^{
-                    [UIAlertController showAlertWithTitle:NSLocalizedString(@"SimRa", @"SimRa")  message:NSLocalizedString(@"Files uploaded successfully", @"Files uploaded") style:UIAlertControllerStyleAlert buttonFirstTitle:NSLocalizedString(@"Ok", @"Ok") buttonFirstAction:^{
-                    } over:self];
-                });
+#pragma mark - Buttons
 
+- (void)configureActionButtons {
+    [self configureButtonsRecursively:self.view];
+}
+
+- (void)configureButtonsRecursively:(UIView *)view {
+
+    if ([view isKindOfClass:[UIButton class]]) {
+        [self configureButton:(UIButton *)view];
+    }
+
+    for (UIView *subview in view.subviews) {
+        [self configureButtonsRecursively:subview];
+    }
+}
+
+- (void)configureButton:(UIButton *)button {
+
+    if (!button) {
+        return;
+    }
+
+    NSString *title = button.currentTitle;
+
+    if (title.length == 0) {
+        return;
+    }
+
+    NSString *symbolName =
+        [self symbolForButtonTitle:title];
+
+    if (symbolName.length == 0) {
+        return;
+    }
+
+    button.accessibilityLabel = title;
+
+    /*
+     iOS 26:
+     Use Apple's native Liquid Glass button configuration.
+     
+     Nothing is simulated here with blur/materials.
+     */
+
+    if (@available(iOS 26.0, *)) {
+
+        UIButtonConfiguration *configuration =
+            [UIButtonConfiguration glassButtonConfiguration];
+
+        configuration.title = title;
+
+        configuration.image =
+            [UIImage systemImageNamed:symbolName];
+
+        configuration.imagePlacement =
+            NSDirectionalRectEdgeLeading;
+
+        configuration.imagePadding = 8.0;
+
+        configuration.contentInsets =
+            NSDirectionalEdgeInsetsMake(
+                10.0,
+                16.0,
+                10.0,
+                16.0
+            );
+
+        button.configuration = configuration;
+
+        button.tintColor =
+            [UIColor labelColor];
+
+        return;
+    }
+
+    /*
+     iOS 15–25 fallback.
+     */
+
+    if (@available(iOS 15.0, *)) {
+
+        UIButtonConfiguration *configuration =
+            [UIButtonConfiguration
+                borderedTintedButtonConfiguration];
+
+        configuration.title = title;
+
+        configuration.image =
+            [UIImage systemImageNamed:symbolName];
+
+        configuration.imagePlacement =
+            NSDirectionalRectEdgeLeading;
+
+        configuration.imagePadding = 8.0;
+
+        configuration.contentInsets =
+            NSDirectionalEdgeInsetsMake(
+                10.0,
+                16.0,
+                10.0,
+                16.0
+            );
+
+        configuration.baseForegroundColor =
+            [UIColor labelColor];
+
+        button.configuration = configuration;
+
+        return;
+    }
+
+    /*
+     Older iOS fallback.
+     */
+
+    [button setTitle:title
+            forState:UIControlStateNormal];
+
+    [button setImage:
+        [UIImage systemImageNamed:symbolName]
+          forState:UIControlStateNormal];
+
+    if (@available(iOS 13.0, *)) {
+        [button setTitleColor:
+            [UIColor labelColor]
+              forState:UIControlStateNormal];
+    } else {
+        [button setTitleColor:
+            [UIColor blackColor]
+              forState:UIControlStateNormal];
+    }
+
+    button.titleLabel.font =
+        [UIFont preferredFontForTextStyle:
+            UIFontTextStyleBody];
+
+    button.contentHorizontalAlignment =
+        UIControlContentHorizontalAlignmentCenter;
+}
+
+- (NSString *)symbolForButtonTitle:(NSString *)title {
+
+    if ([title isEqualToString:
+            NSLocalizedString(@"About", @"About")]) {
+        return @"info.circle";
+    }
+
+    if ([title isEqualToString:
+            NSLocalizedString(@"Privacy", @"Privacy")]) {
+        return @"hand.raised";
+    }
+
+    if ([title isEqualToString:
+            NSLocalizedString(@"How To", @"How To")]) {
+        return @"questionmark.circle";
+    }
+
+    if ([title isEqualToString:
+            NSLocalizedString(@"Feedback", @"Feedback")]) {
+        return @"envelope";
+    }
+
+    if ([title isEqualToString:
+            NSLocalizedString(@"Imprint", @"Imprint")]) {
+        return @"building.columns";
+    }
+
+    return nil;
+}
+
+#pragma mark - Table View
+
+- (CGFloat)tableView:(UITableView *)tableView
+heightForRowAtIndexPath:(NSIndexPath *)indexPath {
+
+    if (tableView.numberOfSections == 2 &&
+        indexPath.section == 1) {
+
+        return indexPath.row < 5 ? 56.0 : 52.0;
+    }
+
+    return 56.0;
+}
+
+- (CGFloat)tableView:(UITableView *)tableView
+heightForHeaderInSection:(NSInteger)section {
+
+    return 32.0;
+}
+
+#pragma mark - Version
+
+- (void)configureVersionInteraction {
+
+    if (!self.versionCell) {
+        return;
+    }
+
+    if (self.versionTapGesture) {
+        [self.versionCell
+            removeGestureRecognizer:self.versionTapGesture];
+    }
+
+    self.versionTapGesture =
+        [[UITapGestureRecognizer alloc]
+            initWithTarget:self
+            action:@selector(didTapOnVersion:)];
+
+    self.versionTapGesture.numberOfTapsRequired = 1;
+
+    [self.versionCell
+        addGestureRecognizer:self.versionTapGesture];
+
+    self.versionCell.isAccessibilityElement = YES;
+
+    if (@available(iOS 13.0, *)) {
+        self.versionCell.accessibilityTraits =
+            UIAccessibilityTraitButton;
+    }
+
+    self.versionCell.accessibilityLabel =
+        NSLocalizedString(
+            @"App version",
+            @"Accessibility label for app version"
+        );
+
+    self.versionCell.accessibilityHint =
+        NSLocalizedString(
+            @"Tap to send diagnostic data to the SimRa team.",
+            @"Accessibility hint for app version"
+        );
+}
+
+- (void)didTapOnVersion:(UITapGestureRecognizer *)sender {
+
+    if (sender.state !=
+        UIGestureRecognizerStateEnded) {
+        return;
+    }
+
+    __weak typeof(self) weakSelf = self;
+
+    [UIAlertController
+        showAlertWithTitle:
+            NSLocalizedString(
+                @"Send local app data to SimRa team",
+                @"Send local app data to SimRa team"
+            )
+
+        message:
+            NSLocalizedString(
+                @"Attention! Only tap the Continue button, if you were asked to do so by the SimRa team. By pressing the Upload button in the next step, you send your SimRa configuration to the SimRa team. You can also specify to upload the last 10 rides or all rides.",
+                @"Diagnostic upload warning"
+            )
+
+        style:UIAlertControllerStyleAlert
+
+        buttonFirstTitle:
+            NSLocalizedString(
+                @"Cancel",
+                @"Cancel"
+            )
+
+        buttonSecondTitle:
+            NSLocalizedString(
+                @"OK",
+                @"OK"
+            )
+
+        buttonFirstAction:^{
+        }
+
+        buttonSecondAction:^{
+
+            typeof(self) strongSelf = weakSelf;
+
+            if (!strongSelf) {
+                return;
             }
-            else{
-                dispatch_async(dispatch_get_main_queue(), ^{
-                    [UIAlertController showAlertWithTitle:NSLocalizedString(@"SimRa", @"SimRa")  message:NSLocalizedString(@"Something went wrong. Please try again later", @"Something went wrong. Please try again later") style:UIAlertControllerStyleAlert buttonFirstTitle:NSLocalizedString(@"Ok", @"Ok") buttonFirstAction:^{
-                        
-                    } over:self];
-                });
-            }
+
+            [Utility writeSimRaPrefs];
+
+            [strongSelf showTotalRidesAlert];
         }
-    }];
-    [dataTask resume];
+
+        over:self];
 }
 
+#pragma mark - Version Information
 
--(void)showTotalRidesAlert{
-    // get all trips
-    
-    // if trips > 10 show second option of sending 10 rides only
-    int totalTrips = ad.trips.tripInfos.count;
-   
-    UIAlertController * alert = [UIAlertController
-                                 alertControllerWithTitle:NSLocalizedString(@"Do you also want to send rides?", @"Do you also want to send rides?")
-                                 message:@""
-                                 preferredStyle:UIAlertControllerStyleAlert];
-    
-    //Add Buttons
-    NSString *allRideTitle = [NSString stringWithFormat:@"%@ (%@)",NSLocalizedString(@"Yes, all", @"Yes, all"), [self getTripsSizeGetAllTrips:true]];
-    
-    UIAlertAction* allRidesButton = [UIAlertAction
-                                     actionWithTitle:allRideTitle
-                                     style:UIAlertActionStyleDefault
-                                     handler:^(UIAlertAction * action) {
-        //Handle your yes please button action here
-        [self sendZipToServerWithAllTrips:true];
-    }];
-    [alert addAction:allRidesButton];
-
-    if (totalTrips > minimumTripsToSend){
-        NSString *fewRidesTitle = [NSString stringWithFormat:@"%@ %d (%@)",NSLocalizedString(@"Yes, the last", @"Yes, the last"),minimumTripsToSend, [self getTripsSizeGetAllTrips:false]];
-
-    UIAlertAction* fewRidesButton = [UIAlertAction
-                                     actionWithTitle:fewRidesTitle
-                                     style:UIAlertActionStyleDefault
-                                     handler:^(UIAlertAction * action) {
-        [self sendZipToServerWithAllTrips:false];
-    }];
-    [alert addAction:fewRidesButton];
-    }
-
-    UIAlertAction* cancelButton = [UIAlertAction
-                                   actionWithTitle:NSLocalizedString(@"No, don't send any rides", @"No, don't send any rides")
-                                   style:UIAlertActionStyleDefault
-                                   handler:^(UIAlertAction * action) {
-        //Handle no, thanks button
-    }];
-    //Add your buttons to alert controller
-    
-    [alert addAction:cancelButton];
-    
-    [self presentViewController:alert animated:YES completion:nil];
-}
--(void)addTapGestureForVersion{
-    UITapGestureRecognizer * tapGesture = [[UITapGestureRecognizer alloc]initWithTarget:self action:@selector(didTapOnVersion:)];
-    tapGesture.numberOfTapsRequired = 1;
-    [self.versionCell addGestureRecognizer:tapGesture];
-}
 - (void)update {
-    self.version.text = [NSString stringWithFormat:@"%@-%@-%@",
-                         [NSBundle mainBundle].infoDictionary[@"CFBundleName"],
-                         [NSBundle mainBundle].infoDictionary[@"CFBundleVersion"],
-                         [NSLocale currentLocale].languageCode
-                         ];
+
+    NSDictionary *info =
+        [[NSBundle mainBundle] infoDictionary];
+
+    NSString *name =
+        info[@"CFBundleName"];
+
+    NSString *version =
+        info[@"CFBundleVersion"];
+
+    NSString *language =
+        [NSLocale currentLocale].languageCode;
+
+    if (name.length == 0) {
+        name = @"SimRa";
+    }
+
+    if (version.length == 0) {
+        version = @"";
+    }
+
+    if (language.length == 0) {
+        language = @"";
+    }
+
+    self.version.text =
+        [NSString stringWithFormat:@"%@-%@-%@",
+            name,
+            version,
+            language];
 }
+
+#pragma mark - Trip Files
+
+- (NSArray<NSString *> *)tripFilePathsForAllTrips:(BOOL)allTrips {
+
+    AppDelegate *appDelegate =
+        [AppDelegate sharedDelegate];
+
+    NSInteger totalTrips =
+        appDelegate.trips.tripInfos.count;
+
+    if (totalTrips <= 0) {
+        return @[];
+    }
+
+    NSInteger firstTrip = 1;
+
+    if (!allTrips &&
+        totalTrips > minimumTripsToSend) {
+
+        firstTrip =
+            totalTrips -
+            minimumTripsToSend +
+            1;
+    }
+
+    NSMutableArray<NSString *> *paths =
+        [NSMutableArray array];
+
+    NSString *documentsDirectory =
+        [Utility getDocumentDirectory];
+
+    for (NSInteger tripIndex = firstTrip;
+         tripIndex <= totalTrips;
+         tripIndex++) {
+
+        NSString *tripPath =
+            [documentsDirectory
+                stringByAppendingPathComponent:
+                    [NSString stringWithFormat:
+                        @"Trip-%ld.json",
+                        (long)tripIndex]];
+
+        NSString *tripInfoPath =
+            [documentsDirectory
+                stringByAppendingPathComponent:
+                    [NSString stringWithFormat:
+                        @"TripInfo-%ld.json",
+                        (long)tripIndex]];
+
+        [paths addObject:tripPath];
+        [paths addObject:tripInfoPath];
+    }
+
+    return [paths copy];
+}
+
+#pragma mark - Trip Size
+
+- (NSString *)getTripsSizeGetAllTrips:(BOOL)allTrips {
+
+    NSArray<NSString *> *tripPaths =
+        [self tripFilePathsForAllTrips:allTrips];
+
+    if (tripPaths.count == 0) {
+
+        return
+            [NSByteCountFormatter
+                stringFromByteCount:0
+                countStyle:
+                    NSByteCountFormatterCountStyleFile];
+    }
+
+    NSFileManager *fileManager =
+        [NSFileManager defaultManager];
+
+    long long totalBytes = 0;
+
+    for (NSString *path in tripPaths) {
+
+        NSError *error = nil;
+
+        NSDictionary *attributes =
+            [fileManager
+                attributesOfItemAtPath:path
+                error:&error];
+
+        NSNumber *fileSize =
+            attributes[NSFileSize];
+
+        if (fileSize) {
+
+            totalBytes +=
+                fileSize.longLongValue;
+
+        } else if (error) {
+
+            NSLog(
+                @"Could not determine file size for %@: %@",
+                path,
+                error
+            );
+        }
+    }
+
+    return
+        [NSByteCountFormatter
+            stringFromByteCount:totalBytes
+            countStyle:
+                NSByteCountFormatterCountStyleFile];
+}
+
+#pragma mark - ZIP
+
+- (NSString *)createZipFilesWithPath:(BOOL)allTrips {
+
+    NSString *temporaryDirectory =
+        NSTemporaryDirectory();
+
+    if (temporaryDirectory.length == 0) {
+        return nil;
+    }
+
+    NSMutableArray<NSString *> *paths =
+        [NSMutableArray
+            arrayWithArray:
+                [Utility getAllDocumentsPrefLinks]];
+
+    [paths addObjectsFromArray:
+        [self tripFilePathsForAllTrips:allTrips]];
+
+    NSString *zipPath =
+        [temporaryDirectory
+            stringByAppendingPathComponent:
+                @"Logger.zip"];
+
+    [[NSFileManager defaultManager]
+        removeItemAtPath:zipPath
+        error:nil];
+
+    BOOL created =
+        [SSZipArchive
+            createZipFileAtPath:zipPath
+            withFilesAtPaths:paths];
+
+    if (!created) {
+
+        NSLog(
+            @"Could not create ZIP archive at %@",
+            zipPath
+        );
+
+        return nil;
+    }
+
+    return zipPath;
+}
+
+#pragma mark - Upload
+
+- (void)sendZipToServerWithAllTrips:(BOOL)allTrips {
+
+    NSString *zipFilePath =
+        [self createZipFilesWithPath:allTrips];
+
+    if (zipFilePath.length == 0) {
+        [self showUploadError];
+        return;
+    }
+
+    NSData *zipData =
+        [NSData dataWithContentsOfFile:zipFilePath];
+
+    if (zipData.length == 0) {
+        [self showUploadError];
+        return;
+    }
+
+    NSString *baseURL =
+        [NSString stringWithFormat:
+            @"%@/debug",
+            API.APIPrefix];
+
+    NSURLComponents *components =
+        [NSURLComponents
+            componentsWithString:baseURL];
+
+    if (!components) {
+        [self showUploadError];
+        return;
+    }
+
+    components.queryItems = @[
+        [NSURLQueryItem
+            queryItemWithName:@"clientHash"
+            value:NSString.clientHash]
+    ];
+
+    NSURL *url = components.URL;
+
+    if (!url) {
+        [self showUploadError];
+        return;
+    }
+
+    NSMutableURLRequest *request =
+        [NSMutableURLRequest
+            requestWithURL:url];
+
+    request.HTTPMethod = @"POST";
+
+    NSString *boundary =
+        [NSString stringWithFormat:
+            @"SimRa-%@",
+            NSUUID.UUID.UUIDString];
+
+    [request setValue:
+        [NSString stringWithFormat:
+            @"multipart/form-data; boundary=%@",
+            boundary]
+        forHTTPHeaderField:@"Content-Type"];
+
+    NSMutableData *body =
+        [NSMutableData data];
+
+    NSString *header =
+        [NSString stringWithFormat:
+            @"--%@\r\n"
+             "Content-Disposition: form-data; "
+             "name=\"file\"; filename=\"Logger.zip\"\r\n"
+             "Content-Type: application/zip\r\n"
+             "\r\n",
+            boundary];
+
+    [body appendData:
+        [header dataUsingEncoding:
+            NSUTF8StringEncoding]];
+
+    [body appendData:zipData];
+
+    NSString *footer =
+        [NSString stringWithFormat:
+            @"\r\n--%@--\r\n",
+            boundary];
+
+    [body appendData:
+        [footer dataUsingEncoding:
+            NSUTF8StringEncoding]];
+
+    request.HTTPBody = body;
+
+    __weak typeof(self) weakSelf = self;
+
+    NSURLSessionDataTask *task =
+        [[NSURLSession sharedSession]
+            dataTaskWithRequest:request
+            completionHandler:
+            ^(NSData *data,
+              NSURLResponse *response,
+              NSError *error) {
+
+        dispatch_async(
+            dispatch_get_main_queue(),
+            ^{
+
+            typeof(self) strongSelf = weakSelf;
+
+            if (!strongSelf) {
+                return;
+            }
+
+            if (error) {
+
+                NSLog(
+                    @"SimRa diagnostic upload failed: %@",
+                    error
+                );
+
+                [strongSelf showUploadError];
+                return;
+            }
+
+            NSHTTPURLResponse *httpResponse =
+                (NSHTTPURLResponse *)response;
+
+            NSInteger statusCode =
+                httpResponse.statusCode;
+
+            NSLog(
+                @"SimRa diagnostic upload response: %ld",
+                (long)statusCode
+            );
+
+            if (statusCode >= 200 &&
+                statusCode < 300) {
+
+                [strongSelf showUploadSuccess];
+
+            } else {
+
+                [strongSelf showUploadError];
+            }
+        });
+    }];
+
+    [task resume];
+}
+
+#pragma mark - Upload Alerts
+
+- (void)showUploadSuccess {
+
+    [UIAlertController
+        showAlertWithTitle:
+            NSLocalizedString(
+                @"SimRa",
+                @"SimRa"
+            )
+
+        message:
+            NSLocalizedString(
+                @"Files uploaded successfully",
+                @"Files uploaded successfully"
+            )
+
+        style:UIAlertControllerStyleAlert
+
+        buttonFirstTitle:
+            NSLocalizedString(
+                @"OK",
+                @"OK"
+            )
+
+        buttonFirstAction:^{
+        }
+
+        over:self];
+}
+
+- (void)showUploadError {
+
+    if (!self.viewIfLoaded.window) {
+        return;
+    }
+
+    [UIAlertController
+        showAlertWithTitle:
+            NSLocalizedString(
+                @"SimRa",
+                @"SimRa"
+            )
+
+        message:
+            NSLocalizedString(
+                @"Something went wrong. Please try again later",
+                @"Something went wrong. Please try again later"
+            )
+
+        style:UIAlertControllerStyleAlert
+
+        buttonFirstTitle:
+            NSLocalizedString(
+                @"OK",
+                @"OK"
+            )
+
+        buttonFirstAction:^{
+        }
+
+        over:self];
+}
+
+#pragma mark - Ride Selection
+
+- (void)showTotalRidesAlert {
+
+    AppDelegate *appDelegate =
+        [AppDelegate sharedDelegate];
+
+    NSInteger totalTrips =
+        appDelegate.trips.tripInfos.count;
+
+    UIAlertController *alert =
+        [UIAlertController
+            alertControllerWithTitle:
+                NSLocalizedString(
+                    @"Do you also want to send rides?",
+                    @"Do you also want to send rides?"
+                )
+            message:nil
+            preferredStyle:
+                UIAlertControllerStyleActionSheet];
+
+    NSString *allRidesTitle =
+        [NSString stringWithFormat:
+            @"%@ (%@)",
+            NSLocalizedString(
+                @"Yes, all",
+                @"Yes, all"
+            ),
+            [self getTripsSizeGetAllTrips:YES]];
+
+    [alert addAction:
+        [UIAlertAction
+            actionWithTitle:allRidesTitle
+            style:UIAlertActionStyleDefault
+            handler:^(UIAlertAction *action) {
+
+        [self sendZipToServerWithAllTrips:YES];
+    }]];
+
+    if (totalTrips > minimumTripsToSend) {
+
+        NSString *recentRidesTitle =
+            [NSString stringWithFormat:
+                @"%@ %ld (%@)",
+                NSLocalizedString(
+                    @"Yes, the last",
+                    @"Yes, the last"
+                ),
+                (long)minimumTripsToSend,
+                [self getTripsSizeGetAllTrips:NO]];
+
+        [alert addAction:
+            [UIAlertAction
+                actionWithTitle:recentRidesTitle
+                style:UIAlertActionStyleDefault
+                handler:^(UIAlertAction *action) {
+
+            [self sendZipToServerWithAllTrips:NO];
+        }]];
+    }
+
+    [alert addAction:
+        [UIAlertAction
+            actionWithTitle:
+                NSLocalizedString(
+                    @"No, don't send any rides",
+                    @"No, don't send any rides"
+                )
+            style:UIAlertActionStyleCancel
+            handler:nil]];
+
+    if (alert.popoverPresentationController) {
+
+        alert.popoverPresentationController.sourceView =
+            self.view;
+
+        alert.popoverPresentationController.sourceRect =
+            CGRectMake(
+                CGRectGetMidX(self.view.bounds),
+                CGRectGetMaxY(self.view.bounds) - 40.0,
+                1.0,
+                1.0
+            );
+    }
+
+    [self presentViewController:alert
+                       animated:YES
+                     completion:nil];
+}
+
+#pragma mark - Settings Actions
 
 - (IBAction)aboutPressed:(UIButton *)sender {
-    [[AppDelegate sharedDelegate] openURL:@{
-        @"en" : @"https://www.digital-future.berlin/en/research/projects/simra/",
-        @"de" : @"https://www.digital-future.berlin/forschung/projekte/simra/"
-    }];
+
+    [[AppDelegate sharedDelegate]
+        openURL:@{
+            @"en":
+                @"https://www.digital-future.berlin/en/research/projects/simra/",
+            @"de":
+                @"https://www.digital-future.berlin/forschung/projekte/simra/"
+        }];
 }
 
 - (IBAction)privacyPressed:(UIButton *)sender {
-    [[AppDelegate sharedDelegate] openURL:@{
-        @"en" : @"https://www.tu.berlin/en/3s/research/projects/simra-privacy-policy-statement",
-        @"de" : @"https://www.tu.berlin/3s/forschung/projekte/simra-datenschutzerklaerung"
-    }];
+
+    [[AppDelegate sharedDelegate]
+        openURL:@{
+            @"en":
+                @"https://www.tu.berlin/en/3s/research/projects/simra-privacy-policy-statement",
+            @"de":
+                @"https://www.tu.berlin/3s/forschung/projekte/simra-datenschutzerklaerung"
+        }];
 }
 
 - (IBAction)howtoPressed:(UIButton *)sender {
+
     [[AppDelegate sharedDelegate] showHowTo];
 }
 
 - (IBAction)feedbackPressed:(UIButton *)sender {
-    if (MFMailComposeViewController.canSendMail) {
-        MFMailComposeViewController* controller = [[MFMailComposeViewController alloc] init];
-        controller.mailComposeDelegate = self;
-        [controller setToRecipients:@[@"ask@mcc.tu-berlin.de"]];
-        [controller setSubject:NSLocalizedString(@"Feedback SimRa", @"Feedback SimRa")];
-        [controller setMessageBody:NSLocalizedString(@"Dear SimRa Team", @"Dear SimRa Team")
-                            isHTML:NO];
-        [self presentViewController:controller animated:TRUE completion:nil];
-    } else {
-        self.ac = [UIAlertController alertControllerWithTitle:NSLocalizedString(@"SimRa", @"SimRa")
-                                                      message:NSLocalizedString(@"Configure your Email, please!", @"Configure your Email, please!")
-                                               preferredStyle:UIAlertControllerStyleAlert];
-        UIAlertAction *aad = [UIAlertAction actionWithTitle:NSLocalizedString(@"OK", @"OK")
-                                                      style:UIAlertActionStyleDefault
-                                                    handler:nil];
-        [self.ac addAction:aad];
-        [self presentViewController:self.ac animated:TRUE completion:nil];
-        return;
-        
-    }
-}
 
-- (void)mailComposeController:(MFMailComposeViewController *)controller
-          didFinishWithResult:(MFMailComposeResult)result
-                        error:(NSError *)error {
-    if (result == MFMailComposeResultSent) {
-        NSLog(@"sent");
+    if ([MFMailComposeViewController canSendMail]) {
+
+        MFMailComposeViewController *controller =
+            [[MFMailComposeViewController alloc] init];
+
+        controller.mailComposeDelegate = self;
+
+        [controller setToRecipients:
+            @[@"ask@mcc.tu-berlin.de"]];
+
+        [controller setSubject:
+            NSLocalizedString(
+                @"Feedback SimRa",
+                @"Feedback SimRa"
+            )];
+
+        [controller setMessageBody:
+            NSLocalizedString(
+                @"Dear SimRa Team",
+                @"Dear SimRa Team"
+            )
+            isHTML:NO];
+
+        [self presentViewController:controller
+                           animated:YES
+                         completion:nil];
+
+        return;
     }
-    [self dismissViewControllerAnimated:TRUE completion:nil];
+
+    self.ac =
+        [UIAlertController
+            alertControllerWithTitle:
+                NSLocalizedString(
+                    @"SimRa",
+                    @"SimRa"
+                )
+            message:
+                NSLocalizedString(
+                    @"Configure your Email, please!",
+                    @"Configure your Email, please!"
+                )
+            preferredStyle:
+                UIAlertControllerStyleAlert];
+
+    [self.ac addAction:
+        [UIAlertAction
+            actionWithTitle:
+                NSLocalizedString(
+                    @"OK",
+                    @"OK"
+                )
+            style:UIAlertActionStyleDefault
+            handler:nil]];
+
+    [self presentViewController:self.ac
+                       animated:YES
+                     completion:nil];
 }
 
 - (IBAction)imprintPressed:(UIButton *)sender {
-    [[AppDelegate sharedDelegate] openURL:@{
-        @"en" : @"https://www.tu.berlin/en/footer/site-credits",
-        @"de" : @"https://www.tu.berlin/footer/impressum"
-    }];
+
+    [[AppDelegate sharedDelegate]
+        openURL:@{
+            @"en":
+                @"https://www.tu.berlin/en/footer/site-credits",
+            @"de":
+                @"https://www.tu.berlin/footer/impressum"
+        }];
 }
 
 - (IBAction)openBikeSensorSwitch:(id)sender {
@@ -335,4 +968,25 @@
 
 - (IBAction)btnOpenBikeSensorSettings:(id)sender {
 }
+
+#pragma mark - Mail
+
+- (void)mailComposeController:
+            (MFMailComposeViewController *)controller
+      didFinishWithResult:
+            (MFMailComposeResult)result
+                    error:
+            (NSError *)error {
+
+    if (error) {
+        NSLog(
+            @"Mail composer error: %@",
+            error
+        );
+    }
+
+    [self dismissViewControllerAnimated:YES
+                             completion:nil];
+}
+
 @end
