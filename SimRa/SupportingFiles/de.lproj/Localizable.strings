@@ -333,6 +333,12 @@
 
 /* Siri dialog strings */
 "Recording started." = "Aufzeichnung gestartet.";
+"Start Recording" = "Aufzeichnung starten";
+"Hazard type" = "Gefahrentyp";
+"Hazard recorded." = "Gefahr erfasst.";
+"Record an incident with a hazard type." = "Gefahr mit Gefahrentyp erfassen.";
+"A SimRa recording is already active." = "Eine SimRa-Aufnahme läuft bereits.";
+"No SimRa recording is active." = "Aktuell läuft keine SimRa-Aufnahme.";
 "Button recording" = "Über den Button erfasst";
 "Recording stopped." = "Aufzeichnung gestoppt.";
 "A recording is already in progress." = "Es läuft bereits eine Aufzeichnung.";
@@ -471,3 +477,63 @@
 "Balanced" = "Ausgeglichen";
 "Maximum Battery Saving" = "Maximale Akkueinsparung";
 "Select battery optimization level" = "Wählen Sie die Akkuoptimierungsstufe";
+
+/* Start */
+"Start" = "Start";
+
+/* Hazard Types */
+"Pothole" = "Schlagloch";
+"Tailgating" = "Drängeln";
+"Illegal Parking" = "Falschparker";
+
+/* Traffic Participants */
+"Car" = "PKW";
+"Pedestrian" = "Fußgänger";
+"Truck" = "LKW";
+"Bus" = "Bus";
+"Motorcycle" = "Motorrad";
+"Bicycle" = "Fahrrad";
+
+/* Hazard Sources */
+"Detected via On-Device AI" = "Erkannt via On-Device AI";
+"Detected via Online AI" = "Erkannt via Online AI";
+"Manually recorded" = "Manuell erfasst";
+
+/* Widget */
+"Recording active" = "Aufnahme läuft";
+"%d min ago" = "vor %d Min.";
+"Distance: %@ km" = "Distanz: %@ km";
+"Hazards: %d" = "Gefahren: %d";
+"%d min" = "%d Min.";
+"Shortcut" = "Kurzbefehle";
+"Shortcuts" = "Kurzbefehle";
+"Apple Watch" = "Apple Watch";
+"Involved road user" = "Beteiligte Verkehrsteilnehmer";
+"Offline map mode" = "Offline-Kartenmodus";
+"Show recorded route" = "Gefahrene Linie anzeigen";
+"Appearance" = "Darstellung";
+"System" = "System";
+"Light" = "Hell";
+"Dark" = "Dunkel";
+"Recording and map" = "Aufzeichnung und Karte";
+"No route recorded" = "Keine Strecke aufgezeichnet";
+"Notifications" = "Benachrichtigungen";
+"Ride reminder" = "Fahrt-Erinnerung";
+"Weekday" = "Wochentag";
+"Time" = "Uhrzeit";
+"Save reminder" = "Erinnerung speichern";
+"Ready to ride?" = "Bereit für die nächste Fahrt?";
+"Start a SimRa recording for your next ride." = "Starte eine SimRa-Aufzeichnung für deine nächste Fahrt.";
+"Search trips" = "Fahrten suchen";
+
+/* Live Activity */
+"Recording in progress" = "Aufnahme läuft";
+"Mark hazard" = "Gefahr erfassen";
+"Record incident" = "Incident erfassen";
+"Quickly recorded. Details can be added later." = "Schnell erfasst. Details können später ergänzt werden.";
+
+/* End of Trip */
+"Trip completed" = "Fahrt beendet";
+"Save changes" = "Änderungen speichern";
+"Discard" = "Verwerfen";
+"Review your ride" = "Fahrt überprüfen";

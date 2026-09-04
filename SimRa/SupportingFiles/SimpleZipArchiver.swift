@@ -168,21 +168,15 @@ private extension Data {
 
     mutating func appendUInt16(_ value: UInt16) {
         var value = value.littleEndian
-        append(
-            UnsafeBufferPointer(
-                start: &value,
-                count: 1
-            )
-        )
+        Swift.withUnsafeBytes(of: &value) {
+            append(contentsOf: $0)
+        }
     }
 
     mutating func appendUInt32(_ value: UInt32) {
         var value = value.littleEndian
-        append(
-            UnsafeBufferPointer(
-                start: &value,
-                count: 1
-            )
-        )
+        Swift.withUnsafeBytes(of: &value) {
+            append(contentsOf: $0)
+        }
     }
 }

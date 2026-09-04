@@ -7,7 +7,6 @@
 
 import Foundation
 import CoreLocation
-import UIKit
 
 @objcMembers
 public final class TripAnnotation: NSObject {
@@ -299,16 +298,6 @@ public final class Trips: UploaderObject {
             }
         }
 
-        let allTrips = Trip.allStoredIdentifiers()
-        for anIdentifier in allTrips {
-            let identifier = anIdentifier.intValue
-            let tripInfo = self.tripInfos[NSNumber(value: identifier)]
-            if tripInfo == nil || tripInfo?.annotationsCount == 0 {
-                if let trip = Trip(fromStorage: identifier) {
-                    self.tripInfos[NSNumber(value: trip.identifier)] = trip.tripInfo()
-                }
-            }
-        }
     }
 
     public func newTrip() -> Trip {
@@ -329,7 +318,7 @@ public final class Trips: UploaderObject {
     }
 
     public func addTripToStatistics(_ trip: Trip) {
-        guard let appDelegate = self.appDelegate ?? (AppDelegate.shared() as? AppDelegate) else { return }
+        let appDelegate = self.appDelegate ?? AppDelegate.shared()
         let defaults = appDelegate.defaults
         let regionId = appDelegate.regions.regionId
         let regionSuffix = regionId == 0 ? "" : "-\(regionId)"
@@ -401,10 +390,7 @@ public final class Trips: UploaderObject {
             fh.write(data)
         }
 
-        guard let appDelegate = self.appDelegate ?? (AppDelegate.shared() as? AppDelegate) else {
-            try? fh.close()
-            return fileURL
-        }
+        let appDelegate = self.appDelegate ?? AppDelegate.shared()
 
         let regionId = appDelegate.regions.regionId
         let regionSuffix = regionId == 0 ? "" : "-\(regionId)"

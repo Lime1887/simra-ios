@@ -3,6 +3,8 @@
 //  SimRa
 //
 //  Created by Emil Pauls on 27.08.26.
+//  Copyright © 2026 Mobile Cloud Computing an der Fakultät IV
+//  (Elektrotechnik und Informatik) der TU Berlin. All rights reserved.
 //
 
 import Foundation
@@ -20,6 +22,7 @@ struct MyTripsView: View {
 
     @State private var isLoading = false
     @State private var hasLoaded = false
+    @State private var searchText = ""
 
     @StateObject private var uploadCoordinator =
         TripBatchUploadCoordinator()
@@ -35,21 +38,37 @@ struct MyTripsView: View {
 
     private var pendingItems: [TripListItem] {
         items.filter {
-            !$0.isUploaded
+            !$0.isUploaded && matchesSearch($0)
         }
     }
 
     private var uploadedItems: [TripListItem] {
         items.filter {
-            $0.isUploaded
+            $0.isUploaded && matchesSearch($0)
         }
+    }
+
+    private func matchesSearch(
+        _ item: TripListItem
+    ) -> Bool {
+
+        let query =
+            searchText
+                .trimmingCharacters(
+                    in: .whitespacesAndNewlines
+                )
+
+        guard !query.isEmpty else {
+            return true
+        }
+
+        return String(item.id)
+            .localizedCaseInsensitiveContains(query)
     }
 
     private var selectedItems: [TripListItem] {
         items.filter {
-            selectedTripIDs.contains(
-                $0.id
-            )
+            selectedTripIDs.contains($0.id)
         }
     }
 
@@ -60,11 +79,10 @@ struct MyTripsView: View {
     }
 
     private var allPendingSelected: Bool {
+
         let ids =
             Set(
-                pendingItems.map(
-                    \.id
-                )
+                pendingItems.map(\.id)
             )
 
         guard !ids.isEmpty else {
@@ -106,6 +124,16 @@ struct MyTripsView: View {
         )
         .navigationBarTitleDisplayMode(
             .inline
+        )
+        .searchable(
+            text:
+                $searchText,
+            prompt:
+                NSLocalizedString(
+                    "Search trips",
+                    comment:
+                        "Search trips"
+                )
         )
         .toolbar {
             toolbar
@@ -412,12 +440,9 @@ struct MyTripsView: View {
 
         NavigationLink {
 
-            TripEditView(
-                viewModel:
-                    TripEditViewModel(
-                        trip:
-                            item.trip
-                    )
+            LazyTripEditDestination(
+                identifier:
+                    item.id
             )
 
         } label: {
@@ -438,9 +463,13 @@ struct MyTripsView: View {
 
                 Button {
 
-                    uploadSingle(
-                        item.trip
-                    )
+                    if let trip =
+                        item.loadTrip() {
+
+                        uploadSingle(
+                            trip
+                        )
+                    }
 
                 } label: {
 
@@ -498,8 +527,7 @@ struct MyTripsView: View {
 
     // MARK: Loading
 
-    private func loadTripsIfNeeded()
-        async {
+    private func loadTripsIfNeeded() async {
 
         guard !hasLoaded else {
             return
@@ -508,8 +536,7 @@ struct MyTripsView: View {
         await reloadTrips()
     }
 
-    private func reloadTrips()
-        async {
+    private func reloadTrips() async {
 
         guard !isLoading else {
             return
@@ -519,99 +546,177 @@ struct MyTripsView: View {
         hasLoaded = false
         selectedTripIDs.removeAll()
 
-        /*
-         Clear the visible list first.
-
-         The important difference from the old implementation:
-         we append trips incrementally instead of waiting until
-         every trip has been loaded and calculated.
-        */
         items.removeAll(
             keepingCapacity:
                 true
         )
 
+        /*
+         Load identifiers first.
+
+         The identifier is only used as a fallback for ordering.
+         The actual date always comes from the trip's own locations.
+         */
+
         let identifiers =
-            Trip
-                .allStoredIdentifiers()
-                .sorted {
-                    $0.intValue >
-                    $1.intValue
-                }
+            Set(
+                TripInfo.allStoredIdentifiers()
+                    +
+                Trip.allStoredIdentifiers()
+            )
+            .sorted {
+                $0.intValue > $1.intValue
+            }
 
         var batchCount = 0
 
         for identifier in identifiers {
 
-            guard
-                !Task.isCancelled
-            else {
+            guard !Task.isCancelled else {
                 break
             }
 
-            guard
-                let trip =
+            let tripIdentifier =
+                identifier.intValue
+
+            /*
+             Prefer TripInfo for metadata, but independently load
+             the Trip so that the actual recording timestamps come
+             from this specific trip.
+             */
+
+            let info: TripInfo
+            let trip: Trip?
+
+            if let storedInfo =
+                TripInfo(
+                    fromStorage:
+                        tripIdentifier
+                ) {
+
+                info = storedInfo
+
+                trip =
                     Trip(
                         fromStorage:
-                            identifier.intValue
+                            tripIdentifier
                     )
-            else {
+
+            } else if let storedTrip =
+                        Trip(
+                            fromStorage:
+                                tripIdentifier
+                        ) {
+
+                trip = storedTrip
+                info = storedTrip.tripInfo()
+
+            } else {
+
                 continue
             }
 
-            let baseItem =
+            /*
+             IMPORTANT:
+             Do not use info.duration.startDate here.
+
+             The start date is derived directly from the locations
+             belonging to THIS trip.
+             */
+
+            let startDate =
+                trip.flatMap {
+                    firstDate(
+                        for:
+                            $0
+                    )
+                }
+
+            let endDate =
+                trip.flatMap {
+                    lastDate(
+                        for:
+                            $0
+                    )
+                }
+
+            let item =
                 TripListItem(
-                    trip:
-                        trip,
-                    summary:
-                        nil
+                    info:
+                        info,
+                    startDate:
+                        startDate,
+                    endDate:
+                        endDate
                 )
 
             items.append(
-                baseItem
+                item
             )
 
             batchCount += 1
 
             /*
-             Let SwiftUI render the item before continuing.
-             This removes the "several seconds of empty list"
-             feeling.
-            */
+             Give SwiftUI an opportunity to render the already
+             loaded rows before continuing.
+             */
+
             if batchCount >= 3 {
 
                 batchCount = 0
 
                 await Task.yield()
             }
-
-            /*
-             Extract only primitive calculation data and
-             perform the mathematical work separately.
-            */
-            await calculateSummary(
-                for:
-                    trip
-            )
         }
 
+        /*
+         Final ordering:
+         1. Real recording start date, newest first.
+         2. Trip identifier as deterministic fallback.
+
+         This prevents equal/missing dates from producing an
+         unpredictable order.
+         */
+
         items.sort {
-            (
-                $0.summary?.startDate ??
-                firstDate(
-                    for:
-                        $0.trip
-                ) ??
-                .distantPast
-            ) >
-            (
-                $1.summary?.startDate ??
-                firstDate(
-                    for:
-                        $1.trip
-                ) ??
-                .distantPast
-            )
+
+            switch (
+                $0.startDate,
+                $1.startDate
+            ) {
+
+            case let (
+                lhs?,
+                rhs?
+            ):
+
+                if lhs != rhs {
+                    return lhs > rhs
+                }
+
+                return $0.id > $1.id
+
+            case (
+                _?,
+                nil
+            ):
+
+                return true
+
+            case (
+                nil,
+                _?
+            ):
+
+                return false
+
+            case (
+                nil,
+                nil
+            ):
+
+                return $0.id > $1.id
+            }
         }
 
         isLoading = false
@@ -624,38 +729,21 @@ struct MyTripsView: View {
         for trip: Trip
     ) async {
 
-        guard
-            !Task.isCancelled
-        else {
+        guard !Task.isCancelled else {
             return
         }
 
-        /*
-         This short extraction step interacts with the existing
-         Trip / Core Data object graph and therefore stays on
-         the MainActor.
-
-         Only Sendable value types leave this section.
-        */
         let input =
             TripSummaryBuilder.makeInput(
                 from:
                     trip
             )
 
-        guard
-            !Task.isCancelled
-        else {
+        guard !Task.isCancelled else {
             return
         }
 
-        /*
-         Pure mathematical calculation happens separately.
-
-         No Trip, NSManagedObject or Core Data object crosses
-         into the detached task.
-        */
-        let summary =
+        _ =
             await Task.detached(
                 priority:
                     .utility
@@ -669,9 +757,7 @@ struct MyTripsView: View {
             }
             .value
 
-        guard
-            !Task.isCancelled
-        else {
+        guard !Task.isCancelled else {
             return
         }
 
@@ -687,13 +773,31 @@ struct MyTripsView: View {
             return
         }
 
-        items[index] =
-            TripListItem(
-                trip:
-                    trip,
-                summary:
-                    summary
-            )
+        if let info =
+            TripInfo(
+                fromStorage:
+                    trip.identifier
+            ) {
+
+            /*
+             Preserve the already determined dates from the
+             current list item. Re-reading TripInfo must not
+             replace them with potentially stale duration data.
+             */
+
+            let existing =
+                items[index]
+
+            items[index] =
+                TripListItem(
+                    info:
+                        info,
+                    startDate:
+                        existing.startDate,
+                    endDate:
+                        existing.endDate
+                )
+        }
     }
 
     // MARK: Selection
@@ -747,9 +851,9 @@ struct MyTripsView: View {
     private func uploadSelected() {
 
         let trips =
-            selectedPendingItems.map(
-                \.trip
-            )
+            selectedPendingItems.compactMap {
+                $0.loadTrip()
+            }
 
         guard !trips.isEmpty else {
             return
@@ -828,24 +932,109 @@ struct MyTripsView: View {
         selectedTripIDs.removeAll()
     }
 
-    // MARK: Date
+    // MARK: Dates
+
+    private func tripLocations(
+        for trip: Trip
+    ) -> [TripLocation] {
+
+        (trip.tripLocations as NSArray)
+            .compactMap {
+                $0 as? TripLocation
+            }
+    }
 
     private func firstDate(
         for trip: Trip
     ) -> Date? {
 
-        guard
-            let firstLocation =
-                trip.tripLocations
-                    .firstObject
-                    as? TripLocation
-        else {
-            return nil
+        tripLocations(
+            for:
+                trip
+        )
+        .map {
+            $0.location.timestamp
         }
+        .min()
+    }
 
-        return firstLocation
-            .location
-            .timestamp
+    private func lastDate(
+        for trip: Trip
+    ) -> Date? {
+
+        tripLocations(
+            for:
+                trip
+        )
+        .map {
+            $0.location.timestamp
+        }
+        .max()
+    }
+}
+
+// MARK: - Lazy Trip Edit Destination
+
+private struct LazyTripEditDestination:
+    View {
+
+    let identifier:
+        Int
+
+    @State private var trip:
+        Trip?
+
+    @State private var failed =
+        false
+
+    var body: some View {
+
+        Group {
+
+            if let trip {
+
+                TripEditView(
+                    viewModel:
+                        TripEditViewModel(
+                            trip:
+                                trip
+                        )
+                )
+
+            } else if failed {
+
+                ContentUnavailableView(
+                    NSLocalizedString(
+                        "Trip unavailable",
+                        comment:
+                            "Trip unavailable"
+                    ),
+                    systemImage:
+                        "exclamationmark.triangle"
+                )
+
+            } else {
+
+                ProgressView(
+                    NSLocalizedString(
+                        "Loading trip",
+                        comment:
+                            "Loading trip"
+                    )
+                )
+            }
+        }
+        .task {
+
+            trip =
+                Trip(
+                    fromStorage:
+                        identifier
+                )
+
+            failed =
+                trip == nil
+        }
     }
 }
 
@@ -854,19 +1043,97 @@ struct MyTripsView: View {
 private struct TripListItem:
     Identifiable {
 
-    let trip: Trip
-    let summary: TripSummary?
+    let info:
+        TripInfo
+
+    /*
+     These dates intentionally belong to the individual Trip
+     and are not taken from TripInfo.duration.
+     */
+
+    let startDate:
+        Date?
+
+    let endDate:
+        Date?
 
     var id: Int {
-        trip.identifier
+        info.identifier
     }
 
     var isUploaded: Bool {
-        trip.uploaded
+        info.uploaded
+    }
+
+    var summary:
+        TripSummary {
+
+        TripSummary(
+            distanceMeters:
+                max(
+                    Double(
+                        info.length
+                    ),
+                    0
+                ),
+
+            duration:
+                calculatedDuration,
+
+            averageSpeedKmh:
+                nil,
+
+            maximumSpeedKmh:
+                nil,
+
+            pointCount:
+                0,
+
+            startDate:
+                startDate,
+
+            endDate:
+                endDate
+        )
+    }
+
+    private var calculatedDuration:
+        TimeInterval {
+
+        /*
+         Prefer the actual location timestamps.
+
+         If those are unavailable, fall back to the stored
+         TripInfo duration.
+         */
+
+        if let startDate,
+           let endDate {
+
+            return max(
+                endDate.timeIntervalSince(
+                    startDate
+                ),
+                0
+            )
+        }
+
+        return max(
+            info.duration.duration,
+            0
+        )
+    }
+
+    func loadTrip() -> Trip? {
+
+        Trip(
+            fromStorage:
+                info.identifier
+        )
     }
 }
 
-// MARK: - Calculation Input
+// MARK: - Calculation Point
 
 private struct TripCalculationPoint:
     Sendable {
@@ -965,30 +1232,52 @@ private enum TripSummaryBuilder {
                 TripCalculationPoint(
                     latitude:
                         coordinate.latitude,
+
                     longitude:
                         coordinate.longitude,
+
                     timestamp:
                         location
                             .location
                             .timestamp
                             .timeIntervalSince1970,
+
                     speed:
                         speed
                 )
             )
         }
 
+        /*
+         Use min/max rather than first/last.
+
+         This makes the calculation robust even if the underlying
+         relationship is not returned in timestamp order.
+         */
+
+        let startDate =
+            locations
+                .map {
+                    $0.location.timestamp
+                }
+                .min()
+
+        let endDate =
+            locations
+                .map {
+                    $0.location.timestamp
+                }
+                .max()
+
         return TripCalculationInput(
             points:
                 points,
+
             startDate:
-                locations.first?
-                    .location
-                    .timestamp,
+                startDate,
+
             endDate:
-                locations.last?
-                    .location
-                    .timestamp
+                endDate
         )
     }
 
@@ -999,23 +1288,27 @@ private enum TripSummaryBuilder {
             TripCalculationInput
     ) -> TripSummary {
 
-        guard
-            !input.points.isEmpty
-        else {
+        guard !input.points.isEmpty else {
 
             return TripSummary(
                 distanceMeters:
                     0,
+
                 duration:
                     0,
+
                 averageSpeedKmh:
                     nil,
+
                 maximumSpeedKmh:
                     nil,
+
                 pointCount:
                     0,
+
                 startDate:
                     input.startDate,
+
                 endDate:
                     input.endDate
             )
@@ -1034,36 +1327,20 @@ private enum TripSummaryBuilder {
 
             if let previousPoint {
 
-                let firstCoordinate =
-                    CLLocationCoordinate2D(
+                let firstLocation =
+                    CLLocation(
                         latitude:
                             previousPoint.latitude,
                         longitude:
                             previousPoint.longitude
                     )
 
-                let secondCoordinate =
-                    CLLocationCoordinate2D(
+                let secondLocation =
+                    CLLocation(
                         latitude:
                             point.latitude,
                         longitude:
                             point.longitude
-                    )
-
-                let firstLocation =
-                    CLLocation(
-                        latitude:
-                            firstCoordinate.latitude,
-                        longitude:
-                            firstCoordinate.longitude
-                    )
-
-                let secondLocation =
-                    CLLocation(
-                        latitude:
-                            secondCoordinate.latitude,
-                        longitude:
-                            secondCoordinate.longitude
                     )
 
                 let segmentDistance =
@@ -1123,14 +1400,12 @@ private enum TripSummaryBuilder {
             distanceMeters > 0 {
 
             let hours =
-                duration /
-                3_600
+                duration / 3_600
 
             averageSpeed =
                 hours > 0
                 ? (
-                    distanceMeters /
-                    1_000
+                    distanceMeters / 1_000
                 ) / hours
                 : nil
 
@@ -1143,18 +1418,24 @@ private enum TripSummaryBuilder {
         return TripSummary(
             distanceMeters:
                 distanceMeters,
+
             duration:
                 duration,
+
             averageSpeedKmh:
                 averageSpeed,
+
             maximumSpeedKmh:
                 maximumSpeedKmh > 0
                 ? maximumSpeedKmh
                 : nil,
+
             pointCount:
                 input.points.count,
+
             startDate:
                 input.startDate,
+
             endDate:
                 input.endDate
         )
@@ -1204,9 +1485,10 @@ private struct TripRow:
 
                 summaryView
 
-                if let summary =
-                    item.summary,
-                   summary.pointCount > 0 {
+                let summary =
+                    item.summary
+
+                if summary.pointCount > 0 {
 
                     Text(
                         detailLine(
@@ -1278,10 +1560,8 @@ private struct TripRow:
     private var title:
         String {
 
-        guard
-            let date =
-                item.summary?.startDate ??
-                fallbackDate
+        guard let date =
+            item.startDate
         else {
 
             return NSLocalizedString(
@@ -1338,7 +1618,9 @@ private struct TripRow:
                 .weekOfYear,
             for:
                 .now
-        )?.contains(date) == true {
+        )?.contains(
+            date
+        ) == true {
 
             let weekday =
                 date.formatted(
@@ -1368,115 +1650,66 @@ private struct TripRow:
         )
     }
 
-    private var fallbackDate:
-        Date? {
-
-        guard
-            let firstLocation =
-                item.trip.tripLocations
-                    .firstObject
-                    as? TripLocation
-        else {
-            return nil
-        }
-
-        return firstLocation
-            .location
-            .timestamp
-    }
-
     // MARK: Summary
 
     @ViewBuilder
     private var summaryView:
         some View {
 
-        if let summary =
-            item.summary {
+        let summary =
+            item.summary
 
-            HStack(
-                spacing:
-                    5
-            ) {
+        HStack(
+            spacing:
+                5
+        ) {
 
-                Text(
-                    formatDistance(
-                        summary.distanceMeters
-                    )
+            Text(
+                formatDistance(
+                    summary.distanceMeters
                 )
+            )
 
-                Text(
-                    "·"
-                )
+            Text("·")
                 .foregroundStyle(
                     .tertiary
                 )
 
-                Text(
-                    formatDuration(
-                        summary.duration
-                    )
+            Text(
+                formatDuration(
+                    summary.duration
                 )
+            )
 
-                if let speed =
-                    summary.averageSpeedKmh {
+            if let speed =
+                summary.averageSpeedKmh {
 
-                    Text(
-                        "·"
-                    )
+                Text("·")
                     .foregroundStyle(
                         .tertiary
                     )
 
-                    Text(
-                        String(
-                            format:
-                                "Ø %.1f km/h",
-                            speed
-                        )
-                    )
-                }
-            }
-            .font(
-                .caption.weight(
-                    .medium
-                )
-            )
-            .monospacedDigit()
-            .foregroundStyle(
-                .secondary
-            )
-            .lineLimit(
-                1
-            )
-
-        } else {
-
-            HStack(
-                spacing:
-                    5
-            ) {
-
-                ProgressView()
-                    .controlSize(
-                        .mini
-                    )
-
                 Text(
-                    NSLocalizedString(
-                        "Calculating…",
-                        comment:
-                            "Trip summary is being calculated"
+                    String(
+                        format:
+                            "Ø %.1f km/h",
+                        speed
                     )
                 )
             }
-            .font(
-                .caption
-            )
-            .foregroundStyle(
-                .tertiary
-            )
         }
+        .font(
+            .caption.weight(
+                .medium
+            )
+        )
+        .monospacedDigit()
+        .foregroundStyle(
+            .secondary
+        )
+        .lineLimit(
+            1
+        )
     }
 
     // MARK: Secondary Detail
@@ -1589,8 +1822,7 @@ private struct TripRow:
 
         let minutes =
             (
-                seconds %
-                3_600
+                seconds % 3_600
             ) / 60
 
         let remaining =
@@ -1671,7 +1903,8 @@ final class TripBatchUploadCoordinator:
     // MARK: Upload
 
     func upload(
-        trips: [Trip]
+        trips:
+            [Trip]
     ) {
 
         guard !isUploading else {
@@ -1737,7 +1970,8 @@ final class TripBatchUploadCoordinator:
 
     @objc
     func uploadTripError(
-        _ error: NSError
+        _ error:
+            NSError
     ) {
 
         guard isProcessing else {
@@ -1759,7 +1993,8 @@ final class TripBatchUploadCoordinator:
 
     @objc
     func uploadTripCompleted(
-        _ dictionary: NSDictionary
+        _ dictionary:
+            NSDictionary
     ) {
 
         guard isProcessing else {
@@ -1931,6 +2166,7 @@ final class TripBatchUploadCoordinator:
             true
 
         queue.removeAll()
+
         currentIndex =
             0
     }

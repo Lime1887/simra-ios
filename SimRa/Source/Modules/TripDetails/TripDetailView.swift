@@ -45,27 +45,31 @@ struct TripDetailView: View {
     // MARK: - Body
 
     var body: some View {
-
         Form {
 
-            // MARK: - Bicycle
+            // MARK: Bicycle
 
             Section {
-
                 Picker(
-                    NSLocalizedString("Bicycle type", comment: "Bicycle type"),
+                    NSLocalizedString(
+                        "Bicycle type",
+                        comment: "Bicycle type"
+                    ),
                     selection: $bikeTypeId
                 ) {
-
                     if bikeTypes.isEmpty {
-
-                        Text(NSLocalizedString("Not available", comment: "Not available"))
-                            .tag(0)
-
+                        Text(
+                            NSLocalizedString(
+                                "Not available",
+                                comment: "Not available"
+                            )
+                        )
+                        .tag(0)
                     } else {
-
-                        ForEach(bikeTypes.indices, id: \.self) { index in
-
+                        ForEach(
+                            bikeTypes.indices,
+                            id: \.self
+                        ) { index in
                             Text(bikeTypes[index])
                                 .tag(index)
                         }
@@ -73,43 +77,51 @@ struct TripDetailView: View {
                 }
 
                 Picker(
-                    NSLocalizedString("Position", comment: "Position"),
+                    NSLocalizedString(
+                        "Position",
+                        comment: "Position"
+                    ),
                     selection: $positionId
                 ) {
-
                     if positions.isEmpty {
-
-                        Text(NSLocalizedString("Not available", comment: "Not available"))
-                            .tag(0)
-
+                        Text(
+                            NSLocalizedString(
+                                "Not available",
+                                comment: "Not available"
+                            )
+                        )
+                        .tag(0)
                     } else {
-
-                        ForEach(positions.indices, id: \.self) { index in
-
+                        ForEach(
+                            positions.indices,
+                            id: \.self
+                        ) { index in
                             Text(positions[index])
                                 .tag(index)
                         }
                     }
                 }
-
             } header: {
-
                 Label(
-                    NSLocalizedString("Bicycle", comment: "Bicycle"),
+                    NSLocalizedString(
+                        "Bicycle",
+                        comment: "Bicycle"
+                    ),
                     systemImage: "bicycle"
                 )
             }
 
-            // MARK: - Equipment
+            // MARK: Equipment
 
             Section {
-
                 Toggle(
                     isOn: $childSeat
                 ) {
-
                     Label(
-                        NSLocalizedString("Child seat", comment: "Child seat"),
+                        NSLocalizedString(
+                            "Child seat",
+                            comment: "Child seat"
+                        ),
                         systemImage: "figure.child"
                     )
                 }
@@ -117,122 +129,148 @@ struct TripDetailView: View {
                 Toggle(
                     isOn: $trailer
                 ) {
-
                     Label(
-                        NSLocalizedString("Trailer", comment: "Trailer"),
+                        NSLocalizedString(
+                            "Trailer",
+                            comment: "Trailer"
+                        ),
                         systemImage: "cart"
                     )
                 }
-
             } header: {
-
                 Label(
-                    NSLocalizedString("Equipment", comment: "Equipment"),
+                    NSLocalizedString(
+                        "Equipment",
+                        comment: "Equipment"
+                    ),
                     systemImage: "bicycle.circle"
                 )
             }
 
-            // MARK: - Defaults
+            // MARK: Defaults
 
             Section {
-
                 Button {
-
                     saveAsDefault()
-
                 } label: {
-
                     Label(
-                        NSLocalizedString("Use as default", comment: "Use as default"),
+                        NSLocalizedString(
+                            "Use as default",
+                            comment: "Use as default"
+                        ),
                         systemImage: "star"
                     )
                 }
-
             } footer: {
-
                 Text(
-                    NSLocalizedString("These bicycle and equipment settings will be applied to future trips.", comment: "These bicycle and equipment settings will be applied to future trips.")
+                    NSLocalizedString(
+                        "These bicycle and equipment settings will be applied to future trips.",
+                        comment: "These bicycle and equipment settings will be applied to future trips."
+                    )
                 )
             }
 
-            // MARK: - Unsaved Changes
+            // MARK: Unsaved Changes
 
             if hasChanges {
-
                 Section {
-
                     Label(
-                        NSLocalizedString("Unsaved Changes", comment: "Unsaved Changes"),
+                        NSLocalizedString(
+                            "Unsaved Changes",
+                            comment: "Unsaved Changes"
+                        ),
                         systemImage: "pencil"
                     )
                     .foregroundStyle(.secondary)
-
                 } footer: {
-
                     Text(
-                        NSLocalizedString("Tap 'Done' to save changes.", comment: "Tap 'Done' to save changes.")
+                        NSLocalizedString(
+                            "Tap the checkmark to save or X to discard the changes.",
+                            comment: "Unsaved changes instructions"
+                        )
                     )
                 }
             }
         }
 
-        // MARK: - Navigation
+        // MARK: Navigation
 
         .navigationTitle(
-            NSLocalizedString("Trip Details", comment: "Trip Details")
+            NSLocalizedString(
+                "Trip Details",
+                comment: "Trip Details"
+            )
         )
         .navigationBarTitleDisplayMode(.inline)
 
         .toolbar {
-
             ToolbarItem(
                 placement: .confirmationAction
             ) {
-
-                Button(
-                    NSLocalizedString("Done", comment: "Done")
-                ) {
-
-                    saveAndDismiss()
+                Button {
+                    handleNavigationAction()
+                } label: {
+                    Image(
+                        systemName:
+                            hasChanges
+                            ? "checkmark"
+                            : "xmark"
+                    )
+                    .fontWeight(.semibold)
                 }
-                .fontWeight(.semibold)
-                .disabled(!hasChanges)
+                .accessibilityLabel(
+                    hasChanges
+                    ? NSLocalizedString(
+                        "Save changes",
+                        comment: "Save changes"
+                    )
+                    : NSLocalizedString(
+                        "Cancel",
+                        comment: "Cancel"
+                    )
+                )
+                .accessibilityHint(
+                    hasChanges
+                    ? NSLocalizedString(
+                        "Saves the changed trip details.",
+                        comment: "Save changes hint"
+                    )
+                    : NSLocalizedString(
+                        "Discards any changes and closes the view.",
+                        comment: "Cancel changes hint"
+                    )
+                )
             }
         }
 
-        // MARK: - Change Tracking
+        // MARK: Change Tracking
 
         .onChange(of: bikeTypeId) { _, _ in
-            markChanged()
+            updateChangeState()
         }
 
         .onChange(of: positionId) { _, _ in
-            markChanged()
+            updateChangeState()
         }
 
         .onChange(of: childSeat) { _, _ in
-            markChanged()
+            updateChangeState()
         }
 
         .onChange(of: trailer) { _, _ in
-            markChanged()
+            updateChangeState()
         }
 
-        // MARK: - Load
+        // MARK: Load
 
         .onAppear {
             loadCurrentValues()
         }
     }
 
-    // MARK: - Change
+    // MARK: - Change Tracking
 
-    private func markChanged() {
-
-        // During initial loading SwiftUI also fires
-        // some onChange events. Compare against the
-        // actual Trip values before declaring a change.
-
+    private func updateChangeState() {
         hasChanges =
             bikeTypeId != Int(trip.bikeTypeId)
             || positionId != Int(trip.positionId)
@@ -243,7 +281,6 @@ struct TripDetailView: View {
     // MARK: - Load
 
     private func loadCurrentValues() {
-
         bikeTypeId = Int(trip.bikeTypeId)
         positionId = Int(trip.positionId)
         childSeat = trip.childseat
@@ -251,15 +288,19 @@ struct TripDetailView: View {
         hasChanges = false
     }
 
+    // MARK: - Navigation Action
+
+    private func handleNavigationAction() {
+        if hasChanges {
+            saveAndDismiss()
+        } else {
+            dismiss()
+        }
+    }
+
     // MARK: - Save
 
     private func saveAndDismiss() {
-
-        guard hasChanges else {
-            dismiss()
-            return
-        }
-
         trip.bikeTypeId = bikeTypeId
         trip.positionId = positionId
         trip.childseat = childSeat
@@ -267,7 +308,9 @@ struct TripDetailView: View {
 
         // Editing trip metadata is an actual trip edit.
         trip.edited = true
+
         trip.save()
+
         hasChanges = false
 
         NotificationCenter.default.post(
@@ -286,7 +329,6 @@ struct TripDetailView: View {
     // MARK: - Defaults
 
     private func saveAsDefault() {
-
         UserDefaults.standard.set(
             bikeTypeId,
             forKey: "bikeTypeId"

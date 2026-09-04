@@ -40,8 +40,11 @@ struct SimRaApp: App {
             return .light
         case "dark":
             return .dark
-        default:
+        case "system", "auto":
             return nil // Follow system
+
+        default:
+            return nil
         }
     }
 
@@ -55,6 +58,11 @@ struct SimRaApp: App {
                 _ = RecordingShortcutBridge.startRecording()
             } else if url.path == "/stop" {
                 _ = RecordingShortcutBridge.stopRecording()
+            } else if url.path == "/danger" {
+                _ = RecordingShortcutBridge.markIncident(
+                    0,
+                    source: "Widget"
+                )
             }
         } else if url.host == "incident" {
             let components = URLComponents(

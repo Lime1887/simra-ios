@@ -17,18 +17,42 @@ public struct SimRaRecordingAttributes: ActivityAttributes {
 
     public struct ContentState: Codable, Hashable {
 
+        public struct RoutePoint: Codable, Hashable {
+            public let latitude: Double
+            public let longitude: Double
+
+            public init(latitude: Double, longitude: Double) {
+                self.latitude = latitude
+                self.longitude = longitude
+            }
+        }
+
         public var elapsedSeconds: Int
         public var distanceMeters: Int
         public var incidents: Int
+        public var route: [RoutePoint]
 
         public init(
             elapsedSeconds: Int = 0,
             distanceMeters: Int = 0,
-            incidents: Int = 0
+            incidents: Int = 0,
+            route: [RoutePoint] = []
         ) {
-            self.elapsedSeconds = max(0, elapsedSeconds)
-            self.distanceMeters = max(0, distanceMeters)
-            self.incidents = max(0, incidents)
+            self.elapsedSeconds = max(
+                0,
+                elapsedSeconds
+            )
+
+            self.distanceMeters = max(
+                0,
+                distanceMeters
+            )
+
+            self.incidents = max(
+                0,
+                incidents
+            )
+            self.route = route
         }
     }
 

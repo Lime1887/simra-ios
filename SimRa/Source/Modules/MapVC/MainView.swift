@@ -65,6 +65,19 @@ struct MainView: View {
                 ) {
                     MyTripsView()
                 }
+                .navigationDestination(
+                    isPresented: $vm.navigateToTripEdit
+                ) {
+                    if let trip = vm.tripToEdit {
+                        TripEditView(
+                            viewModel:
+                                TripEditViewModel(
+                                    trip: trip
+                                ),
+                            showDetailsOnAppear: true
+                        )
+                    }
+                }
         }
     }
 
@@ -86,22 +99,37 @@ struct MainView: View {
     // MARK: - Map
 
     private var mapView: some View {
-        Map(
-            position: $vm.cameraPosition
-        ) {
-            UserAnnotation()
-            recordingRoute
-            recordingIncidentMarkers
-        }
-        .mapStyle(
-            .standard(
-                elevation: .realistic
-            )
-        )
-        .mapControls {
-            MapUserLocationButton()
-            MapCompass()
-            MapScaleView()
+        Group {
+            if vm.offlineMapMode {
+                OfflineRecordingRouteView(
+                    coordinates:
+                        vm.recordingRouteCoordinates,
+                    incidents:
+                        vm.recordingIncidents,
+                    showRoute:
+                        vm.shouldRenderRecordingRoute
+                )
+            } else {
+                Map(
+                    position: $vm.cameraPosition
+                ) {
+                    UserAnnotation()
+                    if vm.shouldRenderRecordingRoute {
+                        recordingRoute
+                    }
+                    recordingIncidentMarkers
+                }
+                .mapStyle(
+                    .standard(
+                        elevation: .realistic
+                    )
+                )
+                .mapControls {
+                    MapUserLocationButton()
+                    MapCompass()
+                    MapScaleView()
+                }
+            }
         }
         .accessibilityElement(
             children: .contain
@@ -414,6 +442,68 @@ struct MainView: View {
         ) {
             vm.suppressRegionMessage()
         }
+    }
+}
+
+private struct OfflineRecordingRouteView: View {
+    let coordinates: [CLLocationCoordinate2D]
+    let incidents: [RecordingIncident]
+    let showRoute: Bool
+
+    var body: some View {
+        GeometryReader { proxy in
+            Canvas { context, size in
+                guard showRoute, coordinates.count > 1 else {
+                    return
+                }
+
+                let latitudes = coordinates.map(\.latitude)
+                let longitudes = coordinates.map(\.longitude)
+                guard
+                    let minLatitude = latitudes.min(),
+                    let maxLatitude = latitudes.max(),
+                    let minLongitude = longitudes.min(),
+                    let maxLongitude = longitudes.max()
+                else {
+                    return
+                }
+
+                let latitudeSpan = max(maxLatitude - minLatitude, 0.00001)
+                let longitudeSpan = max(maxLongitude - minLongitude, 0.00001)
+                let inset: CGFloat = 24
+
+                func point(_ coordinate: CLLocationCoordinate2D) -> CGPoint {
+                    CGPoint(
+                        x: inset + (coordinate.longitude - minLongitude) / longitudeSpan
+                            * max(size.width - inset * 2, 1),
+                        y: size.height - inset - (coordinate.latitude - minLatitude) / latitudeSpan
+                            * max(size.height - inset * 2, 1)
+                    )
+                }
+
+                var path = Path()
+                path.move(to: point(coordinates[0]))
+                for coordinate in coordinates.dropFirst() {
+                    path.addLine(to: point(coordinate))
+                }
+
+                context.stroke(
+                    path,
+                    with: .color(.blue),
+                    style: StrokeStyle(lineWidth: 5, lineCap: .round, lineJoin: .round)
+                )
+            }
+            .background(Color(.secondarySystemBackground))
+            .overlay {
+                if coordinates.isEmpty {
+                    ContentUnavailableView(
+                        NSLocalizedString("No route recorded", comment: "Offline route empty state"),
+                        systemImage: "point.topleft.down.to.point.bottomright.curvepath"
+                    )
+                }
+            }
+        }
+        .ignoresSafeArea()
     }
 }
 

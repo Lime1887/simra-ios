@@ -2,408 +2,1005 @@
 //  TripEditView.swift
 //  SimRa
 //
-//  SwiftUI trip editor
+//  Created by Emil Pauls on 25.08.26.
+//  Copyright © 2026 Mobile Cloud Computing an der Fakultät IV
+//  (Elektrotechnik und Informatik) der TU Berlin. All rights reserved.
 //
 
 import SwiftUI
 import MapKit
+import UIKit
 
 // MARK: - Trip Point
 
-/// SwiftUI representation of an incident attached to a trip location.
-struct TripPoint: Identifiable {
+@objc(TripPoint)
+public final class TripPoint:
+    NSObject,
+    MKAnnotation,
+    Identifiable
+{
+    public var title:
+        String?
 
-    let id = UUID()
-    let tripLocation: TripLocation
-    let title: String
+    public var tripLocation:
+        TripLocation
 
-    var coordinate: CLLocationCoordinate2D {
-        tripLocation.location.coordinate
+    /// True while a manually created annotation
+    /// is being edited and has not yet been persisted.
+    public var isPending =
+        false
+
+    /// Stable SwiftUI identity.
+    public let id =
+        UUID().uuidString
+
+    public var subtitle:
+        String?
+    {
+        nil
     }
 
-    var subtitle: String {
-        DateFormatter.localizedString(
-            from: tripLocation.location.timestamp,
-            dateStyle: .short,
-            timeStyle: .medium
-        )
+    public var displayTitle:
+        String
+    {
+        let trimmed =
+            title?
+                .trimmingCharacters(
+                    in:
+                        .whitespacesAndNewlines
+                )
+            ?? ""
+
+        return trimmed.isEmpty
+            ? NSLocalizedString(
+                "Gefahr",
+                comment:
+                    "Fallback incident title"
+            )
+            : trimmed
     }
+
+    public var coordinate:
+        CLLocationCoordinate2D
+    {
+        tripLocation
+            .location
+            .coordinate
+    }
+
+    public init(
+        tripLocation:
+            TripLocation
+    ) {
+        self.tripLocation =
+            tripLocation
+
+        super.init()
+    }
+}
+
+// MARK: - Host Delegate
+
+@objc
+public protocol TripEditViewHostDelegate:
+    AnyObject
+{
+    func tripEditViewHostDidRequestDetails(
+        _ host:
+            TripEditViewHostController
+    )
+
+    func tripEditViewHost(
+        _ host:
+            TripEditViewHostController,
+        didRequestAnnotationEdit:
+            TripPoint
+    )
 }
 
 // MARK: - View Model
 
-@MainActor
-final class TripEditViewModel: ObservableObject {
+final class TripEditViewModel:
+    ObservableObject
+{
+    // MARK: Model
 
-    let trip: Trip
+    let trip:
+        Trip
 
-    @Published private(set) var locations: [TripLocation] = []
-    @Published var startIndex = 0
-    @Published var endIndex = 0
-    @Published private(set) var tripPoints: [TripPoint] = []
-    @Published var cameraPosition: MapCameraPosition = .automatic
-    @Published private(set) var changed = false
+    // MARK: Published State
 
-    /// Incident titles supplied by the SwiftUI app layer.
-    private let incidentTitles: [String]
+    @Published
+    private(set) var locations:
+        [TripLocation] = []
+
+    @Published
+    var startIndex:
+        Int = 0
+
+    @Published
+    var endIndex:
+        Int = 0
+
+    @Published
+    private(set) var tripPoints:
+        [TripPoint] = []
+
+    @Published
+    var cameraPosition:
+        MapCameraPosition = .automatic
+
+    @Published
+    private(set) var changed:
+        Bool = false
+
+    @Published
+    private(set) var routeCoordinates:
+        [CLLocationCoordinate2D] = []
+
+    @Published
+    private(set) var selectedRouteCoordinates:
+        [CLLocationCoordinate2D] = []
+
+    // MARK: Runtime
+
+    private var rebuildTask:
+        Task<Void, Never>?
+
+    private var incidentTypes:
+        [String]
+    {
+        AppDelegate.shared()
+            .constants["incidents"]
+            as? [String]
+            ?? []
+    }
+
+    // MARK: Init
 
     init(
-        trip: Trip,
-        incidentTitles: [String]? = nil
+        trip:
+            Trip
     ) {
-        self.trip = trip
-
-        if let incidentTitles, !incidentTitles.isEmpty {
-            self.incidentTitles = incidentTitles
-        } else {
-            self.incidentTitles =
-                (AppDelegate.shared().constants["incidents"] as? [String]) ?? []
-        }
+        self.trip =
+            trip
 
         reload()
     }
 
-    // MARK: - State
-
-    var editingDisabled: Bool {
-        trip.uploaded || trip.statisticsAdded
+    deinit {
+        rebuildTask?.cancel()
     }
 
-    var hasLocations: Bool {
+    // MARK: Computed State
+
+    var editingDisabled:
+        Bool
+    {
+        trip.uploaded ||
+        trip.statisticsAdded
+    }
+
+    var hasLocations:
+        Bool
+    {
         !locations.isEmpty
     }
 
-    var hasChangedRange: Bool {
-        guard !locations.isEmpty else {
+    var hasChangedRange:
+        Bool
+    {
+        guard
+            !locations.isEmpty
+        else {
             return false
         }
 
         return startIndex != 0 ||
-            endIndex != locations.count - 1
+            endIndex !=
+                locations.count - 1
     }
 
-    // MARK: - Reload
-
-    func reload() {
-        locations = trip.tripLocations.compactMap {
-            $0 as? TripLocation
+    var selectedPointCount:
+        Int
+    {
+        guard
+            !locations.isEmpty
+        else {
+            return 0
         }
 
-        guard !locations.isEmpty else {
-            startIndex = 0
-            endIndex = 0
-            tripPoints = []
-            cameraPosition = .automatic
+        return max(
+            endIndex -
+                startIndex +
+                1,
+            0
+        )
+    }
+
+    // MARK: Reload
+
+    func reload() {
+
+        rebuildTask?.cancel()
+
+        var collected:
+            [TripLocation] = []
+
+        collected.reserveCapacity(
+            trip.tripLocations.count
+        )
+
+        for case
+            let location as TripLocation
+            in trip.tripLocations
+        {
+            collected.append(
+                location
+            )
+        }
+
+        locations =
+            collected
+
+        guard
+            !locations.isEmpty
+        else {
+
+            startIndex =
+                0
+
+            endIndex =
+                0
+
+            routeCoordinates =
+                []
+
+            selectedRouteCoordinates =
+                []
+
+            tripPoints =
+                []
+
+            cameraPosition =
+                .automatic
+
             return
         }
 
-        startIndex = 0
-        endIndex = locations.count - 1
+        startIndex =
+            0
 
+        endIndex =
+            locations.count - 1
+
+        routeCoordinates =
+            makeRouteCoordinates(
+                from:
+                    locations,
+                maximumCount:
+                    1800
+            )
+
+        updateSelectedRoute()
         rebuildTripPoints()
         updateCamera()
     }
 
-    // MARK: - Selection
+    // MARK: Route Cache
 
-    func updateStartIndex(_ value: Int) {
-        guard !locations.isEmpty else {
-            return
+    private func makeRouteCoordinates(
+        from locations:
+            [TripLocation],
+        maximumCount:
+            Int
+    ) -> [CLLocationCoordinate2D]
+    {
+        guard
+            !locations.isEmpty
+        else {
+            return []
         }
 
-        let maximum = max(
-            endIndex - 1,
-            0
-        )
+        let coordinates =
+            locations.map {
+                $0.location.coordinate
+            }
 
-        let newValue = min(
-            max(value, 0),
-            maximum
-        )
-
-        guard newValue != startIndex else {
-            return
+        guard
+            coordinates.count >
+                maximumCount,
+            maximumCount >= 2
+        else {
+            return coordinates
         }
 
-        startIndex = newValue
-        changed = true
+        var result:
+            [CLLocationCoordinate2D] = []
+
+        result.reserveCapacity(
+            maximumCount
+        )
+
+        let step =
+            Double(
+                coordinates.count - 1
+            )
+            /
+            Double(
+                maximumCount - 1
+            )
+
+        for index
+            in 0..<maximumCount
+        {
+            let sourceIndex =
+                min(
+                    coordinates.count - 1,
+                    Int(
+                        (
+                            Double(index) *
+                            step
+                        )
+                        .rounded()
+                    )
+                )
+
+            result.append(
+                coordinates[sourceIndex]
+            )
+        }
+
+        return result
     }
 
-    func updateEndIndex(_ value: Int) {
-        guard !locations.isEmpty else {
+    private func updateSelectedRoute() {
+
+        guard
+            !locations.isEmpty,
+            startIndex >= 0,
+            endIndex >= 0,
+            startIndex <
+                locations.count,
+            endIndex <
+                locations.count
+        else {
+
+            selectedRouteCoordinates =
+                []
+
             return
         }
 
-        let minimum = min(
-            startIndex + 1,
-            locations.count - 1
-        )
-
-        let newValue = max(
+        let lower =
             min(
-                value,
-                locations.count - 1
-            ),
-            minimum
-        )
+                startIndex,
+                endIndex
+            )
 
-        guard newValue != endIndex else {
+        let upper =
+            max(
+                startIndex,
+                endIndex
+            )
+
+        guard
+            lower <= upper
+        else {
+
+            selectedRouteCoordinates =
+                []
+
             return
         }
 
-        endIndex = newValue
-        changed = true
+        let selected =
+            Array(
+                locations[
+                    lower...upper
+                ]
+            )
+
+        selectedRouteCoordinates =
+            makeRouteCoordinates(
+                from:
+                    selected,
+                maximumCount:
+                    900
+            )
     }
 
-    // MARK: - Apply Trim
+    // MARK: Selection
+
+    func updateStartIndex(
+        _ value:
+            Int
+    ) {
+
+        guard
+            !locations.isEmpty
+        else {
+            return
+        }
+
+        let maximum =
+            max(
+                endIndex - 1,
+                0
+            )
+
+        let newValue =
+            min(
+                max(
+                    value,
+                    0
+                ),
+                maximum
+            )
+
+        guard
+            newValue != startIndex
+        else {
+            return
+        }
+
+        startIndex =
+            newValue
+
+        changed =
+            true
+
+        updateSelectedRoute()
+    }
+
+    func updateEndIndex(
+        _ value:
+            Int
+    ) {
+
+        guard
+            !locations.isEmpty
+        else {
+            return
+        }
+
+        let minimum =
+            min(
+                startIndex + 1,
+                locations.count - 1
+            )
+
+        let newValue =
+            max(
+                min(
+                    value,
+                    locations.count - 1
+                ),
+                minimum
+            )
+
+        guard
+            newValue != endIndex
+        else {
+            return
+        }
+
+        endIndex =
+            newValue
+
+        changed =
+            true
+
+        updateSelectedRoute()
+    }
+
+    func resetSelection() {
+
+        guard
+            !locations.isEmpty
+        else {
+            return
+        }
+
+        startIndex =
+            0
+
+        endIndex =
+            locations.count - 1
+
+        changed =
+            true
+
+        updateSelectedRoute()
+    }
+
+    // MARK: Save / Trim
 
     func applySelection() {
-        guard !locations.isEmpty else {
-            return
-        }
 
-        let lower = min(
-            startIndex,
-            endIndex
-        )
-
-        let upper = max(
-            startIndex,
-            endIndex
-        )
-
-        guard lower >= 0,
-              upper < locations.count
+        guard
+            !locations.isEmpty,
+            !editingDisabled
         else {
             return
         }
 
-        // Nothing to trim.
-        guard lower > 0 ||
-              upper < locations.count - 1
+        let lower =
+            min(
+                startIndex,
+                endIndex
+            )
+
+        let upper =
+            max(
+                startIndex,
+                endIndex
+            )
+
+        guard
+            lower >= 0,
+            upper <
+                locations.count
         else {
             return
         }
 
-        let selectedLocations = Array(
-            locations[lower...upper]
-        )
+        guard
+            lower > 0 ||
+            upper <
+                locations.count - 1
+        else {
+            return
+        }
 
-        guard !selectedLocations.isEmpty else {
+        let selectedLocations =
+            Array(
+                locations[
+                    lower...upper
+                ]
+            )
+
+        guard
+            !selectedLocations.isEmpty
+        else {
             return
         }
 
         updateCSVFiles(
-            for: selectedLocations
+            for:
+                selectedLocations
         )
 
-        let removedLocations = locations
-            .enumerated()
-            .filter { index, _ in
-                index < lower ||
-                index > upper
-            }
-            .map(\.element)
+        let removedLocations =
+            locations
+                .enumerated()
+                .filter {
+                    index,
+                    _
+                    in
+                    index < lower ||
+                    index > upper
+                }
+                .map {
+                    $0.element
+                }
 
-        for location in removedLocations {
-            location.tripMotions.removeAllObjects()
-            location.tripAnnotation = nil
+        for location
+            in removedLocations
+        {
+            location.tripMotions
+                .removeAllObjects()
+
+            location.tripAnnotation =
+                nil
         }
 
-        trip.tripLocations.removeAllObjects()
+        trip.tripLocations
+            .removeAllObjects()
 
-        trip.tripLocations.addObjects(
-            from: selectedLocations
-        )
+        trip.tripLocations
+            .addObjects(
+                from:
+                    selectedLocations
+            )
 
-        trip.edited = true
+        trip.edited =
+            true
+
         trip.save()
 
-        locations = selectedLocations
+        locations =
+            selectedLocations
 
-        startIndex = 0
-        endIndex = max(
-            selectedLocations.count - 1,
+        startIndex =
             0
-        )
 
-        changed = false
+        endIndex =
+            max(
+                selectedLocations.count - 1,
+                0
+            )
 
+        changed =
+            false
+
+        routeCoordinates =
+            makeRouteCoordinates(
+                from:
+                    selectedLocations,
+                maximumCount:
+                    1800
+            )
+
+        updateSelectedRoute()
         rebuildTripPoints()
         updateCamera()
 
         NotificationCenter.default.post(
-            name: Notification.Name("tripEdited"),
-            object: trip
-        )
-    }
-
-    // MARK: - CSV
-
-    private func updateCSVFiles(
-        for selectedLocations: [TripLocation]
-    ) {
-        let documentsURL =
-            Self.documentsDirectoryURL()
-
-        let locationsURL =
-            documentsURL.appendingPathComponent(
-                "TripLocations-\(trip.identifier).csv"
-            )
-
-        let motionsURL =
-            documentsURL.appendingPathComponent(
-                "TripMotions-\(trip.identifier).csv"
-            )
-
-        var locationLines: [String] = []
-        var motionLines: [String] = []
-
-        for location in selectedLocations {
-
-            let gyro =
-                location.gyro ?? TripGyro()
-
-            let locationLine =
-                TripGyro().locationString(
-                    from: location,
-                    gyro: gyro,
-                    closePassInfo:
-                        location.closePassInfo
-                )
-
-            locationLines.append(
-                locationLine
-            )
-
-            for case let motion
-                    as TripMotion
-                    in location.tripMotions {
-
-                let motionLine =
-                    TripMotion().motionString(
-                        from: motion
-                    )
-
-                motionLines.append(
-                    motionLine
-                )
-            }
-        }
-
-        if let data = locationLines
-            .joined(separator: "\n")
-            .data(using: .utf8) {
-
-            try? data.write(
-                to: locationsURL,
-                options: .atomic
-            )
-        }
-
-        if let data = motionLines
-            .joined(separator: "\n")
-            .data(using: .utf8) {
-
-            try? data.write(
-                to: motionsURL,
-                options: .atomic
-            )
-        }
-    }
-
-    private static func documentsDirectoryURL() -> URL {
-        FileManager.default.urls(
-            for: .documentDirectory,
-            in: .userDomainMask
-        )[0]
-    }
-
-    // MARK: - Persistence
-
-    func saveTrimmed() {
-        trip.edited = true
-        trip.save()
-
-        changed = false
-
-        NotificationCenter.default.post(
-            name: Notification.Name("tripEdited"),
-            object: trip
+            name:
+                NSNotification.Name(
+                    "tripEdited"
+                ),
+            object:
+                trip
         )
     }
 
     func persistAnnotations() {
+
         trip.save()
-        changed = false
+
+        changed =
+            false
     }
 
-    // MARK: - Incidents
+    // MARK: CSV
+
+    private func updateCSVFiles(
+        for locations:
+            [TripLocation]
+    ) {
+
+        let documents =
+            Self.documentsDirectoryURL()
+
+        let locationsURL =
+            documents
+                .appendingPathComponent(
+                    "TripLocations-\(trip.identifier).csv"
+                )
+
+        let motionsURL =
+            documents
+                .appendingPathComponent(
+                    "TripMotions-\(trip.identifier).csv"
+                )
+
+        var locationLines:
+            [String] = []
+
+        var motionLines:
+            [String] = []
+
+        locationLines.reserveCapacity(
+            locations.count
+        )
+
+        for location
+            in locations
+        {
+            let gyro =
+                location.gyro ??
+                TripGyro()
+
+            let helper =
+                TripGyro()
+
+            locationLines.append(
+                helper.locationString(
+                    from:
+                        location,
+                    gyro:
+                        gyro,
+                    closePassInfo:
+                        location.closePassInfo
+                )
+            )
+
+            for case
+                let motion as TripMotion
+                in location.tripMotions
+            {
+                let motionHelper =
+                    TripMotion()
+
+                motionLines.append(
+                    motionHelper.motionString(
+                        from:
+                            motion
+                    )
+                )
+            }
+        }
+
+        try?
+            locationLines
+                .joined(
+                    separator:
+                        "\n"
+                )
+                .data(
+                    using:
+                        .utf8
+                )?
+                .write(
+                    to:
+                        locationsURL,
+                    options:
+                        .atomic
+                )
+
+        try?
+            motionLines
+                .joined(
+                    separator:
+                        "\n"
+                )
+                .data(
+                    using:
+                        .utf8
+                )?
+                .write(
+                    to:
+                        motionsURL,
+                    options:
+                        .atomic
+                )
+    }
+
+    private static func documentsDirectoryURL()
+        -> URL
+    {
+        FileManager.default.urls(
+            for:
+                .documentDirectory,
+            in:
+                .userDomainMask
+        )[0]
+    }
+
+    // MARK: Incident Points
 
     private func rebuildTripPoints() {
-        tripPoints = locations.compactMap { location in
 
-            guard let annotation =
-                    location.tripAnnotation
-            else {
-                return nil
+        rebuildTask?.cancel()
+
+        let snapshot =
+            locations
+
+        let incidentTypes =
+            incidentTypes
+
+        rebuildTask =
+            Task { @MainActor [weak self] in
+
+                guard
+                    let self
+                else {
+                    return
+                }
+
+                var points:
+                    [TripPoint] = []
+
+                points.reserveCapacity(
+                    min(
+                        snapshot.count,
+                        64
+                    )
+                )
+
+                for (
+                    index,
+                    location
+                ) in snapshot.enumerated()
+                {
+                    guard
+                        !Task.isCancelled
+                    else {
+                        return
+                    }
+
+                    guard
+                        let annotation =
+                            location.tripAnnotation,
+                        annotation.incidentId >= 0
+                    else {
+                        continue
+                    }
+
+                    let incidentID =
+                        Int(
+                            annotation.incidentId
+                        )
+
+                    let title =
+                        incidentID >= 0 &&
+                        incidentID <
+                            incidentTypes.count
+                        ? incidentTypes[
+                            incidentID
+                        ]
+                        : NSLocalizedString(
+                            "Gefahr",
+                            comment:
+                                "Fallback incident title"
+                        )
+
+                    let point =
+                        TripPoint(
+                            tripLocation:
+                                location
+                        )
+
+                    point.title =
+                        title
+
+                    point.isPending =
+                        false
+
+                    points.append(
+                        point
+                    )
+
+                    if index.isMultiple(
+                        of:
+                            150
+                    ) {
+                        await Task.yield()
+                    }
+                }
+
+                guard
+                    !Task.isCancelled
+                else {
+                    return
+                }
+
+                self.tripPoints =
+                    points
+
+                self.rebuildTask =
+                    nil
+            }
+    }
+
+    /// Updates one already-visible marker instead of
+    /// rebuilding all annotations.
+    func refreshSavedAnnotation(
+        _ point:
+            TripPoint
+    ) {
+
+        point.isPending =
+            false
+
+        guard
+            let annotation =
+                point
+                    .tripLocation
+                    .tripAnnotation
+        else {
+
+            tripPoints.removeAll {
+                $0 === point
             }
 
-            let title =
-                incidentTitle(
-                    for: annotation
-                )
-                ??
-                NSLocalizedString(
-                    "Danger",
-                    comment: "Fallback incident title"
-                )
+            return
+        }
 
-            return TripPoint(
-                tripLocation: location,
-                title: title
+        let incidentID =
+            Int(
+                annotation.incidentId
             )
+
+        point.title =
+            incidentID >= 0 &&
+            incidentID <
+                incidentTypes.count
+            ? incidentTypes[
+                incidentID
+            ]
+            : NSLocalizedString(
+                "Gefahr",
+                comment:
+                    "Fallback incident title"
+            )
+
+        tripPoints =
+            tripPoints
+    }
+
+    // MARK: Pending Annotation
+
+    func discardPendingAnnotation(
+        _ point:
+            TripPoint
+    ) {
+
+        guard
+            point.isPending
+        else {
+            return
+        }
+
+        point
+            .tripLocation
+            .tripAnnotation =
+            nil
+
+        tripPoints.removeAll {
+            $0 === point
         }
     }
 
+    // MARK: Add Annotation
+
     @discardableResult
     func addAnnotation(
-        at coordinate: CLLocationCoordinate2D
+        at coordinate:
+            CLLocationCoordinate2D
     ) -> TripPoint? {
 
-        guard !editingDisabled,
-              !locations.isEmpty
+        guard
+            !editingDisabled,
+            !locations.isEmpty,
+            CLLocationCoordinate2DIsValid(
+                coordinate
+            )
         else {
             return nil
         }
 
-        let target = CLLocation(
-            latitude: coordinate.latitude,
-            longitude: coordinate.longitude
-        )
+        let target =
+            CLLocation(
+                latitude:
+                    coordinate.latitude,
+                longitude:
+                    coordinate.longitude
+            )
 
-        var closestLocation:
+        var closest:
             TripLocation?
 
         var closestDistance =
             CLLocationDistance
                 .greatestFiniteMagnitude
 
-        for tripLocation in locations {
-
+        for location
+            in locations
+        {
             let distance =
-                tripLocation.location.distance(
-                    from: target
-                )
+                location.location
+                    .distance(
+                        from:
+                            target
+                    )
 
-            if distance < closestDistance {
-                closestDistance = distance
-                closestLocation = tripLocation
+            if distance <
+                closestDistance
+            {
+                closestDistance =
+                    distance
+
+                closest =
+                    location
             }
         }
 
-        guard let closestLocation,
-              closestLocation.tripAnnotation == nil
+        guard
+            let closest,
+            closest.tripAnnotation == nil
         else {
             return nil
         }
@@ -411,163 +1008,405 @@ final class TripEditViewModel: ObservableObject {
         let annotation =
             TripAnnotation()
 
-        closestLocation.tripAnnotation =
-            annotation
+        // Manual is assigned exactly once:
+        // when the annotation is actually created.
+        annotation.source =
+            TripAnnotationSource
+                .manual
+                .rawValue
 
-        let title =
-            incidentTitle(
-                for: annotation
-            )
-            ??
-            NSLocalizedString(
-                "Danger",
-                comment: "Fallback incident title"
-            )
+        // Keep in memory only.
+        // Do NOT save here.
+        closest.tripAnnotation =
+            annotation
 
         let point =
             TripPoint(
-                tripLocation: closestLocation,
-                title: title
+                tripLocation:
+                    closest
             )
 
-        tripPoints.append(point)
+        // No incident type selected yet.
+        point.title =
+            NSLocalizedString(
+                "Gefahr",
+                comment:
+                    "New incident"
+            )
 
-        trip.edited = true
-        trip.save()
+        point.isPending =
+            true
 
-        NotificationCenter.default.post(
-            name: Notification.Name("tripEdited"),
-            object: trip
-        )
-
-        NotificationCenter.default.post(
-            name: Notification.Name("annotationChanged"),
-            object: trip
+        tripPoints.append(
+            point
         )
 
         return point
     }
 
+    // MARK: Delete Annotation
+
     func deleteAnnotation(
-        _ tripPoint: TripPoint
+        _ point:
+            TripPoint
     ) {
-        guard !editingDisabled else {
+
+        guard
+            !editingDisabled
+        else {
             return
         }
 
-        tripPoint
+        point
             .tripLocation
-            .tripAnnotation = nil
+            .tripAnnotation =
+            nil
 
         tripPoints.removeAll {
-            $0.id == tripPoint.id
+            $0 === point
         }
 
-        trip.edited = true
+        trip.edited =
+            true
+
         trip.save()
 
-        changed = false
-
         NotificationCenter.default.post(
-            name: Notification.Name("tripEdited"),
-            object: trip
+            name:
+                NSNotification.Name(
+                    "tripEdited"
+                ),
+            object:
+                trip
         )
 
         NotificationCenter.default.post(
-            name: Notification.Name("annotationChanged"),
-            object: trip
+            name:
+                NSNotification.Name(
+                    "annotationChanged"
+                ),
+            object:
+                trip
         )
     }
 
-    // MARK: - Incident Title
-
-    private func incidentTitle(
-        for annotation: TripAnnotation?
-    ) -> String? {
-
-        guard let annotation else {
-            return nil
-        }
-
-        let incidentID =
-            Int(annotation.incidentId)
-
-        guard incidentID >= 0,
-              incidentID < incidentTitles.count
-        else {
-            return nil
-        }
-
-        return incidentTitles[incidentID]
-    }
-
-    // MARK: - Camera
+    // MARK: Camera
 
     private func updateCamera() {
-        let coordinates =
-            locations.map {
-                $0.location.coordinate
-            }
 
-        guard !coordinates.isEmpty else {
-            cameraPosition = .automatic
+        guard
+            !routeCoordinates.isEmpty
+        else {
+            cameraPosition =
+                .automatic
+
             return
         }
 
         var rect =
             MKMapRect.null
 
-        for coordinate in coordinates {
-
+        for coordinate
+            in routeCoordinates
+        {
             let point =
-                MKMapPoint(coordinate)
+                MKMapPoint(
+                    coordinate
+                )
 
             let pointRect =
                 MKMapRect(
-                    x: point.x,
-                    y: point.y,
-                    width: 0,
-                    height: 0
+                    x:
+                        point.x,
+                    y:
+                        point.y,
+                    width:
+                        0,
+                    height:
+                        0
                 )
 
             rect =
                 rect.isNull
                 ? pointRect
-                : rect.union(pointRect)
+                : rect.union(
+                    pointRect
+                )
         }
 
-        guard !rect.isNull else {
+        guard
+            !rect.isNull
+        else {
             return
         }
 
         let horizontalPadding =
             max(
-                rect.size.width * 0.12,
+                rect.size.width *
+                    0.12,
                 100
             )
 
         let verticalPadding =
             max(
-                rect.size.height * 0.18,
+                rect.size.height *
+                    0.22,
                 150
             )
 
         cameraPosition =
             .rect(
                 rect.insetBy(
-                    dx: -horizontalPadding,
-                    dy: -verticalPadding
+                    dx:
+                        -horizontalPadding,
+                    dy:
+                        -verticalPadding
                 )
+            )
+    }
+}
+
+// MARK: - Host Controller
+
+@available(iOS 17.0, *)
+@objcMembers
+public final class TripEditViewHostController:
+    UIViewController
+{
+    private let trip:
+        Trip
+
+    private weak var delegate:
+        TripEditViewHostDelegate?
+
+    private var viewModel:
+        TripEditViewModel
+
+    private var hostingController:
+        UIHostingController<TripEditView>!
+
+    @objc
+    public init(
+        trip:
+            Trip,
+        delegate:
+            TripEditViewHostDelegate
+    ) {
+        self.trip =
+            trip
+
+        self.delegate =
+            delegate
+
+        self.viewModel =
+            TripEditViewModel(
+                trip:
+                    trip
+            )
+
+        super.init(
+            nibName:
+                nil,
+            bundle:
+                nil
+        )
+
+        hostingController =
+            UIHostingController(
+                rootView:
+                    TripEditView(
+                        viewModel:
+                            viewModel,
+                        onShowDetails:
+                            { [weak self] in
+
+                                guard
+                                    let self
+                                else {
+                                    return
+                                }
+
+                                self.delegate?
+                                    .tripEditViewHostDidRequestDetails(
+                                        self
+                                    )
+                            },
+                        onEditAnnotation:
+                            { [weak self] point in
+
+                                guard
+                                    let self
+                                else {
+                                    return
+                                }
+
+                                self.delegate?
+                                    .tripEditViewHost(
+                                        self,
+                                        didRequestAnnotationEdit:
+                                            point
+                                    )
+                            }
+                    )
+            )
+
+        embedHostingController()
+    }
+
+    @available(
+        *,
+        unavailable
+    )
+    required init?(
+        coder:
+            NSCoder
+    ) {
+        fatalError(
+            "init(coder:) has not been implemented"
+        )
+    }
+
+    @objc
+    public func reload() {
+
+        viewModel =
+            TripEditViewModel(
+                trip:
+                    trip
+            )
+
+        updateRootView()
+    }
+
+    @objc
+    public func performTrim() {
+        viewModel.applySelection()
+    }
+
+    @objc
+    public var canTrim:
+        Bool
+    {
+        viewModel.hasChangedRange &&
+        !viewModel.editingDisabled
+    }
+
+    private func updateRootView() {
+
+        hostingController.rootView =
+            TripEditView(
+                viewModel:
+                    viewModel,
+                onShowDetails:
+                    { [weak self] in
+
+                        guard
+                            let self
+                        else {
+                            return
+                        }
+
+                        self.delegate?
+                            .tripEditViewHostDidRequestDetails(
+                                self
+                            )
+                    },
+                onEditAnnotation:
+                    { [weak self] point in
+
+                        guard
+                            let self
+                        else {
+                            return
+                        }
+
+                        self.delegate?
+                            .tripEditViewHost(
+                                self,
+                                didRequestAnnotationEdit:
+                                    point
+                            )
+                    }
+            )
+    }
+
+    private func embedHostingController() {
+
+        view.backgroundColor =
+            .clear
+
+        addChild(
+            hostingController
+        )
+
+        hostingController.view
+            .translatesAutoresizingMaskIntoConstraints =
+            false
+
+        hostingController.view
+            .backgroundColor =
+            .clear
+
+        view.addSubview(
+            hostingController.view
+        )
+
+        NSLayoutConstraint.activate(
+            [
+                hostingController.view
+                    .leadingAnchor
+                    .constraint(
+                        equalTo:
+                            view.leadingAnchor
+                    ),
+
+                hostingController.view
+                    .trailingAnchor
+                    .constraint(
+                        equalTo:
+                            view.trailingAnchor
+                    ),
+
+                hostingController.view
+                    .topAnchor
+                    .constraint(
+                        equalTo:
+                            view.topAnchor
+                    ),
+
+                hostingController.view
+                    .bottomAnchor
+                    .constraint(
+                        equalTo:
+                            view.bottomAnchor
+                    )
+            ]
+        )
+
+        hostingController
+            .didMove(
+                toParent:
+                    self
             )
     }
 }
 
 // MARK: - Main View
 
-struct TripEditView: View {
-
+struct TripEditView:
+    View
+{
     @ObservedObject
-    var viewModel: TripEditViewModel
+    var viewModel:
+        TripEditViewModel
+
+    var onShowDetails:
+        (() -> Void)? =
+            nil
+
+    var onEditAnnotation:
+        ((TripPoint) -> Void)? =
+            nil
 
     @State
     private var editingTripPoint:
@@ -577,129 +1416,202 @@ struct TripEditView: View {
     private var showTripDetails =
         false
 
-    var body: some View {
+    private let showDetailsOnAppear: Bool
 
-        NavigationStack {
+    init(
+        viewModel: TripEditViewModel,
+        onShowDetails: (() -> Void)? = nil,
+        onEditAnnotation: ((TripPoint) -> Void)? = nil,
+        showDetailsOnAppear: Bool = false
+    ) {
+        self.viewModel = viewModel
+        self.onShowDetails = onShowDetails
+        self.onEditAnnotation = onEditAnnotation
+        self.showDetailsOnAppear = showDetailsOnAppear
+    }
 
-            MapEditor(
-                viewModel: viewModel,
-                onEditAnnotation: {
-                    editingTripPoint = $0
+    var body:
+        some View
+    {
+        TripMap(
+            viewModel:
+                viewModel,
+            onEditAnnotation:
+                { point in
+
+                    editingTripPoint =
+                        point
+
+                    onEditAnnotation?(
+                        point
+                    )
                 }
+        )
+        .ignoresSafeArea()
+
+        .safeAreaInset(
+            edge:
+                .bottom,
+            spacing:
+                0
+        ) {
+
+            BottomEditor(
+                viewModel:
+                    viewModel
             )
-            .ignoresSafeArea()
-            .safeAreaInset(
-                edge: .bottom,
-                spacing: 0
+            .padding(
+                .horizontal,
+                16
+            )
+            .padding(
+                .bottom,
+                8
+            )
+        }
+
+        .onAppear {
+            if showDetailsOnAppear {
+                showTripDetails = true
+            }
+        }
+
+        .toolbar {
+
+            ToolbarItem(
+                placement:
+                    .principal
             ) {
-                BottomEditor(
-                    viewModel: viewModel
+
+                Text(
+                    NSLocalizedString(
+                        "Edit trip",
+                        comment:
+                            ""
+                    )
                 )
-                .padding(
-                    .horizontal,
-                    16
-                )
-                .padding(
-                    .bottom,
-                    8
+                .font(
+                    .headline
                 )
             }
-            .navigationTitle(
-                NSLocalizedString(
-                    "Edit trip",
-                    comment:
-                        "Trip editor title"
+
+            ToolbarItem(
+                placement:
+                    .topBarLeading
+            ) {
+
+                Button {
+
+                    showTripDetails =
+                        true
+
+                } label: {
+
+                    Image(
+                        systemName:
+                            "info.circle"
+                    )
+                }
+                .accessibilityLabel(
+                    NSLocalizedString(
+                        "Details",
+                        comment:
+                            ""
+                    )
                 )
-            )
-            .navigationBarTitleDisplayMode(
-                .inline
-            )
-            .toolbar {
+            }
 
-                // MARK: Details
+            ToolbarItem(
+                placement:
+                    .topBarTrailing
+            ) {
 
-                ToolbarItem(
-                    placement:
-                        .topBarLeading
-                ) {
-                    Button {
-                        showTripDetails = true
-                    } label: {
-                        Image(
-                            systemName:
-                                "info.circle"
-                        )
-                    }
-                    .accessibilityLabel(
+                Button {
+
+                    viewModel
+                        .applySelection()
+
+                } label: {
+
+                    Text(
                         NSLocalizedString(
-                            "Details",
+                            "Schneiden",
                             comment:
-                                "Trip details button"
+                                ""
                         )
                     )
-                }
-
-                // MARK: Trim
-
-                ToolbarItem(
-                    placement:
-                        .topBarTrailing
-                ) {
-                    Button {
-                        viewModel.applySelection()
-                    } label: {
-                        Text(
-                            NSLocalizedString(
-                                "Trim",
-                                comment:
-                                    "Trim trip"
-                            )
-                        )
-                    }
-                    .fontWeight(.semibold)
-                    .disabled(
-                        viewModel.editingDisabled ||
-                        !viewModel.hasChangedRange
+                    .fontWeight(
+                        .semibold
                     )
                 }
+                .disabled(
+                    viewModel.editingDisabled ||
+                    !viewModel.hasChangedRange
+                )
             }
-            .sheet(
-                isPresented:
-                    $showTripDetails
-            ) {
-                NavigationStack {
-                    TripDetailView(
-                        trip:
-                            viewModel.trip
-                    )
-                }
-                .presentationDetents([
+        }
+
+        .sheet(
+            isPresented:
+                $showTripDetails
+        ) {
+
+            NavigationStack {
+
+                TripDetailView(
+                    trip:
+                        viewModel.trip
+                )
+            }
+            .presentationDetents(
+                [
                     .medium,
                     .large
-                ])
-                .presentationDragIndicator(
-                    .visible
-                )
-            }
-            .sheet(
-                item:
-                    $editingTripPoint
-            ) { point in
-                NavigationStack {
-                    if let annotation =
-                        point.tripLocation.tripAnnotation {
+                ]
+            )
+            .presentationDragIndicator(
+                .visible
+            )
+        }
 
-                        AnnotationView(
-                            tripAnnotation:
-                                annotation,
-                            trip:
-                                viewModel.trip
-                        )
-                    }
+        .sheet(
+            item:
+                $editingTripPoint
+        ) { point in
+
+            NavigationStack {
+
+                if let annotation =
+                    point.tripLocation
+                        .tripAnnotation
+                {
+
+                    AnnotationView(
+                        tripAnnotation:
+                            annotation,
+                        trip:
+                            viewModel.trip,
+                        isNew:
+                            point.isPending,
+                        onSaved:
+                            {
+
+                                // Update only this marker.
+                                viewModel
+                                    .refreshSavedAnnotation(
+                                        point
+                                    )
+                            },
+                        onDiscard:
+                            {
+
+                                viewModel
+                                    .discardPendingAnnotation(
+                                        point
+                                    )
+                            }
+                    )
                 }
-            }
-            .onDisappear {
-                viewModel.persistAnnotations()
             }
         }
     }
@@ -707,8 +1619,9 @@ struct TripEditView: View {
 
 // MARK: - Map
 
-private struct MapEditor: View {
-
+private struct TripMap:
+    View
+{
     @ObservedObject
     var viewModel:
         TripEditViewModel
@@ -716,72 +1629,21 @@ private struct MapEditor: View {
     let onEditAnnotation:
         (TripPoint) -> Void
 
-    @State
-    private var lastPressLocation:
-        CGPoint?
-
-    var body: some View {
-
-        MapReader { proxy in
-
-            Map(
-                position:
-                    $viewModel.cameraPosition
-            ) {
-                completeTrack
-                selectedTrack
-                startAnnotation
-                endAnnotation
-                incidentAnnotations
-            }
-            .mapStyle(
-                .standard(
-                    elevation: .realistic
-                )
-            )
-            .mapControls {
-                MapCompass()
-                MapScaleView()
-                MapPitchToggle()
-            }
-            .mapControlVisibility(
-                .visible
-            )
-            .safeAreaPadding(
-                .top,
-                96
-            )
-            .safeAreaPadding(
-                .bottom,
-                96
-            )
-            .simultaneousGesture(
-                DragGesture(
-                    minimumDistance: 0
-                )
-                .onChanged { value in
-                    lastPressLocation =
-                        value.location
-                }
-            )
-            .simultaneousGesture(
-                LongPressGesture(
-                    minimumDuration:
-                        0.55
-                )
-                .onEnded { _ in
+    var body:
+        some View
+    {
+        MapLongPressContainer(
+            isEnabled:
+                !viewModel.editingDisabled,
+            onLongPress:
+                { coordinate in
 
                     guard
-                        let location =
-                            lastPressLocation,
-                        let coordinate =
-                            proxy.convert(
-                                location,
-                                from: .local
-                            ),
+                        !viewModel.editingDisabled,
                         let point =
                             viewModel.addAnnotation(
-                                at: coordinate
+                                at:
+                                    coordinate
                             )
                     else {
                         return
@@ -791,6 +1653,37 @@ private struct MapEditor: View {
                         point
                     )
                 }
+        ) {
+
+            Map(
+                position:
+                    $viewModel.cameraPosition
+            ) {
+
+                completeTrack
+                selectedTrack
+                startAnnotation
+                endAnnotation
+                incidentAnnotations
+            }
+            .safeAreaPadding(
+                .top,
+                116
+            )
+            .mapStyle(
+                .standard(
+                    elevation:
+                        .flat
+                )
+            )
+            .mapControls {
+
+                MapCompass()
+                MapScaleView()
+                MapPitchToggle()
+            }
+            .mapControlVisibility(
+                .visible
             )
         }
     }
@@ -799,21 +1692,23 @@ private struct MapEditor: View {
 
     @MapContentBuilder
     private var completeTrack:
-        some MapContent {
-
-        if viewModel.locations.count > 1 {
-
+        some MapContent
+    {
+        if
+            viewModel
+                .routeCoordinates
+                .count > 1
+        {
             MapPolyline(
                 coordinates:
-                    viewModel.locations.map {
-                        $0.location.coordinate
-                    }
+                    viewModel.routeCoordinates
             )
             .stroke(
                 Color.primary.opacity(
-                    0.23
+                    0.28
                 ),
-                lineWidth: 3
+                lineWidth:
+                    3
             )
         }
     }
@@ -822,45 +1717,23 @@ private struct MapEditor: View {
 
     @MapContentBuilder
     private var selectedTrack:
-        some MapContent {
-
-        if viewModel.locations.count > 1 {
-
-            let start =
-                min(
-                    viewModel.startIndex,
-                    viewModel.locations.count - 1
-                )
-
-            let end =
-                min(
-                    viewModel.endIndex,
-                    viewModel.locations.count - 1
-                )
-
-            if start <= end {
-
-                let selected =
-                    Array(
-                        viewModel.locations[
-                            start...end
-                        ]
-                    )
-
-                if selected.count > 1 {
-
-                    MapPolyline(
-                        coordinates:
-                            selected.map {
-                                $0.location.coordinate
-                            }
-                    )
-                    .stroke(
-                        .tint,
-                        lineWidth: 5
-                    )
-                }
-            }
+        some MapContent
+    {
+        if
+            viewModel
+                .selectedRouteCoordinates
+                .count > 1
+        {
+            MapPolyline(
+                coordinates:
+                    viewModel
+                        .selectedRouteCoordinates
+            )
+            .stroke(
+                .tint,
+                lineWidth:
+                    5
+            )
         }
     }
 
@@ -868,20 +1741,27 @@ private struct MapEditor: View {
 
     @MapContentBuilder
     private var startAnnotation:
-        some MapContent {
-
+        some MapContent
+    {
         if let coordinate =
             coordinate(
                 at:
                     viewModel.startIndex
-            ) {
-
+            )
+        {
             Annotation(
                 "",
                 coordinate:
                     coordinate
             ) {
-                EndpointMarker(
+
+                TripEndpointMarker(
+                    title:
+                        NSLocalizedString(
+                            "Start",
+                            comment:
+                                ""
+                        ),
                     systemImage:
                         "play.fill",
                     tint:
@@ -895,20 +1775,27 @@ private struct MapEditor: View {
 
     @MapContentBuilder
     private var endAnnotation:
-        some MapContent {
-
+        some MapContent
+    {
         if let coordinate =
             coordinate(
                 at:
                     viewModel.endIndex
-            ) {
-
+            )
+        {
             Annotation(
                 "",
                 coordinate:
                     coordinate
             ) {
-                EndpointMarker(
+
+                TripEndpointMarker(
+                    title:
+                        NSLocalizedString(
+                            "Ziel",
+                            comment:
+                                ""
+                        ),
                     systemImage:
                         "flag.checkered",
                     tint:
@@ -922,145 +1809,670 @@ private struct MapEditor: View {
 
     @MapContentBuilder
     private var incidentAnnotations:
-        some MapContent {
-
+        some MapContent
+    {
         ForEach(
             viewModel.tripPoints
         ) { point in
 
             Annotation(
-                point.title,
+                "",
                 coordinate:
                     point.coordinate
             ) {
+
                 Button {
+
                     onEditAnnotation(
                         point
                     )
+
                 } label: {
-                    Image(
-                        systemName:
-                            "exclamationmark.triangle.fill"
+
+                    IncidentMapMarker(
+                        point:
+                            point
                     )
-                    .font(
-                        .caption.weight(
-                            .bold
-                        )
-                    )
-                    .foregroundStyle(
-                        .white
-                    )
-                    .frame(
-                        width: 30,
-                        height: 30
-                    )
-                    .background(
-                        incidentColor(
-                            for: point
-                        ),
-                        in: Circle()
-                    )
-                    .overlay {
-                        Circle()
-                            .stroke(
-                                .white.opacity(
-                                    0.9
-                                ),
-                                lineWidth: 1.5
-                            )
-                    }
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel(
-                    point.title
+                .buttonStyle(
+                    .plain
                 )
-                .accessibilityHint(
-                    NSLocalizedString(
-                        "Edit incident",
-                        comment:
-                            "Incident annotation hint"
-                    )
+                .accessibilityLabel(
+                    point.displayTitle
                 )
             }
         }
     }
 
-    // MARK: - Helpers
+    // MARK: - Coordinate
 
     private func coordinate(
-        at index: Int
+        at index:
+            Int
     ) -> CLLocationCoordinate2D? {
 
         guard
             index >= 0,
-            index < viewModel.locations.count
+            index <
+                viewModel.locations.count
         else {
             return nil
         }
 
-        return viewModel.locations[index]
+        return viewModel
+            .locations[index]
             .location
             .coordinate
     }
+}
 
-    private func incidentColor(
-        for point: TripPoint
-    ) -> Color {
+// MARK: - Long Press Container
 
-        guard let annotation =
-                point.tripLocation
-                    .tripAnnotation
-        else {
+private struct MapLongPressContainer<Content: View>:
+    View
+{
+    let isEnabled:
+        Bool
+
+    let onLongPress:
+        (CLLocationCoordinate2D) -> Void
+
+    @ViewBuilder
+    let content:
+        () -> Content
+
+    var body:
+        some View
+    {
+        ZStack {
+
+            content()
+
+            MapLongPressBridge(
+                isEnabled:
+                    isEnabled,
+                onLongPress:
+                    onLongPress
+            )
+            .frame(
+                width:
+                    0,
+                height:
+                    0
+            )
+            .allowsHitTesting(
+                false
+            )
+        }
+    }
+}
+
+// MARK: - Long Press Bridge
+
+private struct MapLongPressBridge:
+    UIViewRepresentable
+{
+    let isEnabled:
+        Bool
+
+    let onLongPress:
+        (CLLocationCoordinate2D) -> Void
+
+    func makeCoordinator()
+        -> Coordinator
+    {
+        Coordinator(
+            isEnabled:
+                isEnabled,
+            onLongPress:
+                onLongPress
+        )
+    }
+
+    func makeUIView(
+        context:
+            Context
+    ) -> BridgeView {
+
+        BridgeView { window in
+
+            context.coordinator
+                .attachIfNeeded(
+                    to:
+                        window
+                )
+        }
+    }
+
+    func updateUIView(
+        _ uiView:
+            BridgeView,
+        context:
+            Context
+    ) {
+
+        context.coordinator
+            .isEnabled =
+            isEnabled
+
+        context.coordinator
+            .onLongPress =
+            onLongPress
+
+        if let window =
+            uiView.window
+        {
+
+            context.coordinator
+                .attachIfNeeded(
+                    to:
+                        window
+                )
+
+        } else {
+
+            DispatchQueue.main.async {
+
+                guard
+                    let window =
+                        uiView.window
+                else {
+                    return
+                }
+
+                context.coordinator
+                    .attachIfNeeded(
+                        to:
+                            window
+                    )
+            }
+        }
+    }
+
+    static func dismantleUIView(
+        _ uiView:
+            BridgeView,
+        coordinator:
+            Coordinator
+    ) {
+        coordinator.detach()
+    }
+
+    // MARK: Bridge View
+
+    final class BridgeView:
+        UIView
+    {
+        private let onWindowAvailable:
+            (UIWindow) -> Void
+
+        init(
+            onWindowAvailable:
+                @escaping
+                (UIWindow) -> Void
+        ) {
+            self.onWindowAvailable =
+                onWindowAvailable
+
+            super.init(
+                frame:
+                    .zero
+            )
+
+            backgroundColor =
+                .clear
+
+            isUserInteractionEnabled =
+                false
+        }
+
+        @available(
+            *,
+            unavailable
+        )
+        required init?(
+            coder:
+                NSCoder
+        ) {
+            fatalError(
+                "init(coder:) has not been implemented"
+            )
+        }
+
+        override func didMoveToWindow() {
+
+            super.didMoveToWindow()
+
+            guard
+                window != nil
+            else {
+                return
+            }
+
+            DispatchQueue.main.async { [weak self] in
+
+                guard
+                    let self,
+                    let window =
+                        self.window
+                else {
+                    return
+                }
+
+                self.onWindowAvailable(
+                    window
+                )
+            }
+        }
+    }
+
+    // MARK: Coordinator
+
+    final class Coordinator:
+        NSObject,
+        UIGestureRecognizerDelegate
+    {
+        var isEnabled:
+            Bool
+
+        var onLongPress:
+            (CLLocationCoordinate2D) -> Void
+
+        private weak var mapView:
+            MKMapView?
+
+        private weak var attachedView:
+            UIView?
+
+        private var recognizer:
+            UILongPressGestureRecognizer?
+
+        init(
+            isEnabled:
+                Bool,
+            onLongPress:
+                @escaping
+                (CLLocationCoordinate2D) -> Void
+        ) {
+            self.isEnabled =
+                isEnabled
+
+            self.onLongPress =
+                onLongPress
+
+            super.init()
+        }
+
+        // MARK: Attach
+
+        func attachIfNeeded(
+            to window:
+                UIWindow
+        ) {
+
+            guard
+                let mapView =
+                    findMapView(
+                        in:
+                            window
+                    )
+            else {
+                return
+            }
+
+            guard
+                self.mapView !== mapView
+            else {
+
+                recognizer?
+                    .isEnabled =
+                    isEnabled
+
+                return
+            }
+
+            detach()
+
+            self.mapView =
+                mapView
+
+            let gesture =
+                UILongPressGestureRecognizer(
+                    target:
+                        self,
+                    action:
+                        #selector(
+                            handleLongPress(_:)
+                        )
+                )
+
+            gesture.minimumPressDuration =
+                0.55
+
+            gesture.allowableMovement =
+                14
+
+            gesture.numberOfTouchesRequired =
+                1
+
+            gesture.cancelsTouchesInView =
+                false
+
+            gesture.delaysTouchesBegan =
+                false
+
+            gesture.delegate =
+                self
+
+            gesture.isEnabled =
+                isEnabled
+
+            mapView.addGestureRecognizer(
+                gesture
+            )
+
+            recognizer =
+                gesture
+
+            attachedView =
+                mapView
+        }
+
+        // MARK: Detach
+
+        func detach() {
+
+            if let recognizer {
+
+                attachedView?
+                    .removeGestureRecognizer(
+                        recognizer
+                    )
+            }
+
+            recognizer =
+                nil
+
+            attachedView =
+                nil
+
+            mapView =
+                nil
+        }
+
+        // MARK: Gesture
+
+        @objc
+        private func handleLongPress(
+            _ gesture:
+                UILongPressGestureRecognizer
+        ) {
+
+            guard
+                isEnabled,
+                gesture.state == .began,
+                let mapView
+            else {
+                return
+            }
+
+            let point =
+                gesture.location(
+                    in:
+                        mapView
+                )
+
+            let coordinate =
+                mapView.convert(
+                    point,
+                    toCoordinateFrom:
+                        mapView
+                )
+
+            guard
+                CLLocationCoordinate2DIsValid(
+                    coordinate
+                )
+            else {
+                return
+            }
+
+            onLongPress(
+                coordinate
+            )
+        }
+
+        // MARK: Gesture Coordination
+
+        func gestureRecognizer(
+            _ gestureRecognizer:
+                UIGestureRecognizer,
+            shouldRecognizeSimultaneouslyWith otherGestureRecognizer:
+                UIGestureRecognizer
+        ) -> Bool {
+
+            true
+        }
+
+        // MARK: Map Lookup
+
+        private func findMapView(
+            in view:
+                UIView
+        ) -> MKMapView? {
+
+            if let mapView =
+                view as? MKMapView
+            {
+                return mapView
+            }
+
+            for subview
+                in view.subviews
+            {
+                if let mapView =
+                    findMapView(
+                        in:
+                            subview
+                    )
+                {
+                    return mapView
+                }
+            }
+
+            return nil
+        }
+    }
+}
+
+// MARK: - Incident Marker
+
+private struct IncidentMapMarker:
+    View
+{
+    let point:
+        TripPoint
+
+    private var markerColor:
+        Color
+    {
+        if point.isPending {
             return .blue
         }
 
-        // Different colors for different sources
-        if annotation.source == "Siri" {
-            return annotation.frightening ? .purple : .blue
-        } else if annotation.source != "Manual" {
-            return annotation.frightening ? .indigo : .cyan
-        }
-
-        return annotation.frightening
+        return point
+            .tripLocation
+            .tripAnnotation?
+            .frightening == true
             ? .red
             : .orange
+    }
+
+    var body:
+        some View
+    {
+        VStack(
+            spacing:
+                4
+        ) {
+
+            Image(
+                systemName:
+                    "exclamationmark.triangle.fill"
+            )
+            .font(
+                .system(
+                    size:
+                        12,
+                    weight:
+                        .bold
+                )
+            )
+            .foregroundStyle(
+                .white
+            )
+            .frame(
+                width:
+                    30,
+                height:
+                    30
+            )
+            .background(
+                markerColor,
+                in:
+                    Circle()
+            )
+            .overlay {
+
+                Circle()
+                    .stroke(
+                        .white,
+                        lineWidth:
+                            2
+                    )
+            }
+
+            Text(
+                point.displayTitle
+            )
+            .font(
+                .caption2.weight(
+                    .semibold
+                )
+            )
+            .foregroundStyle(
+                .primary
+            )
+            .lineLimit(
+                1
+            )
+            .fixedSize(
+                horizontal:
+                    true,
+                vertical:
+                    false
+            )
+            .padding(
+                .horizontal,
+                7
+            )
+            .padding(
+                .vertical,
+                3
+            )
+            .background(
+                .regularMaterial,
+                in:
+                    Capsule()
+            )
+        }
     }
 }
 
 // MARK: - Endpoint Marker
 
-private struct EndpointMarker:
-    View {
+private struct TripEndpointMarker:
+    View
+{
+    let title:
+        String
 
-    let systemImage: String
-    let tint: Color
+    let systemImage:
+        String
 
-    var body: some View {
-        Image(
-            systemName:
-                systemImage
+    let tint:
+        Color
+
+    var body:
+        some View
+    {
+        HStack(
+            spacing:
+                6
+        ) {
+
+            Image(
+                systemName:
+                    systemImage
+            )
+            .font(
+                .caption2.weight(
+                    .bold
+                )
+            )
+            .foregroundStyle(
+                .white
+            )
+            .frame(
+                width:
+                    22,
+                height:
+                    22
+            )
+            .background(
+                tint,
+                in:
+                    Circle()
+            )
+
+            Text(
+                title
+            )
+            .font(
+                .caption.weight(
+                    .semibold
+                )
+            )
+            .foregroundStyle(
+                .primary
+            )
+        }
+        .padding(
+            .leading,
+            3
         )
-        .font(
-            .caption.weight(.bold)
+        .padding(
+            .trailing,
+            10
         )
-        .foregroundStyle(
-            .white
-        )
-        .frame(
-            width: 30,
-            height: 30
+        .padding(
+            .vertical,
+            3
         )
         .background(
-            tint,
-            in: Circle()
+            .regularMaterial,
+            in:
+                Capsule()
         )
         .overlay {
-            Circle()
+
+            Capsule()
                 .stroke(
-                    .white.opacity(
-                        0.9
+                    tint.opacity(
+                        0.35
                     ),
-                    lineWidth: 1.5
+                    lineWidth:
+                        1
                 )
         }
     }
@@ -1069,14 +2481,15 @@ private struct EndpointMarker:
 // MARK: - Bottom Editor
 
 private struct BottomEditor:
-    View {
-
+    View
+{
     @ObservedObject
     var viewModel:
         TripEditViewModel
 
-    var body: some View {
-
+    var body:
+        some View
+    {
         RangeSlider(
             startIndex:
                 $viewModel.startIndex,
@@ -1087,9 +2500,19 @@ private struct BottomEditor:
             disabled:
                 viewModel.editingDisabled,
             onStartChanged:
-                viewModel.updateStartIndex,
+                {
+                    viewModel
+                        .updateStartIndex(
+                            $0
+                        )
+                },
             onEndChanged:
-                viewModel.updateEndIndex
+                {
+                    viewModel
+                        .updateEndIndex(
+                            $0
+                        )
+                }
         )
         .padding(
             .horizontal,
@@ -1097,26 +2520,47 @@ private struct BottomEditor:
         )
         .padding(
             .vertical,
-            10
+            14
         )
-        .background(
-            .regularMaterial,
-            in: RoundedRectangle(
-                cornerRadius: 20,
-                style: .continuous
-            )
-        )
-        .overlay {
-            RoundedRectangle(
-                cornerRadius: 20,
-                style: .continuous
-            )
-            .stroke(
-                Color.primary.opacity(
-                    0.08
-                ),
-                lineWidth: 0.5
-            )
+        .background {
+
+            if #available(
+                iOS 26.0,
+                *
+            ) {
+
+                RoundedRectangle(
+                    cornerRadius:
+                        24,
+                    style:
+                        .continuous
+                )
+                .fill(
+                    .clear
+                )
+                .glassEffect(
+                    .regular,
+                    in:
+                        RoundedRectangle(
+                            cornerRadius:
+                                24,
+                            style:
+                                .continuous
+                        )
+                )
+
+            } else {
+
+                RoundedRectangle(
+                    cornerRadius:
+                        24,
+                    style:
+                        .continuous
+                )
+                .fill(
+                    .ultraThinMaterial
+                )
+            }
         }
     }
 }
@@ -1124,16 +2568,21 @@ private struct BottomEditor:
 // MARK: - Range Slider
 
 private struct RangeSlider:
-    View {
+    View
+{
+    @Binding
+    var startIndex:
+        Int
 
     @Binding
-    var startIndex: Int
+    var endIndex:
+        Int
 
-    @Binding
-    var endIndex: Int
+    let count:
+        Int
 
-    let count: Int
-    let disabled: Bool
+    let disabled:
+        Bool
 
     let onStartChanged:
         (Int) -> Void
@@ -1150,11 +2599,13 @@ private struct RangeSlider:
         case end
     }
 
-    var body: some View {
-
+    var body:
+        some View
+    {
         GeometryReader { geometry in
 
-            let inset: CGFloat = 18
+            let inset:
+                CGFloat = 18
 
             let width =
                 max(
@@ -1170,7 +2621,8 @@ private struct RangeSlider:
                 )
 
             let centerY =
-                geometry.size.height / 2
+                geometry.size.height /
+                2
 
             let startX =
                 position(
@@ -1205,157 +2657,202 @@ private struct RangeSlider:
                         )
                     )
                     .frame(
-                        height: 5
+                        height:
+                            6
                     )
                     .position(
                         x:
-                            geometry.size.width / 2,
+                            geometry.size.width /
+                            2,
                         y:
                             centerY
                     )
 
                 Capsule()
-                    .fill(.tint)
+                    .fill(
+                        .tint
+                    )
                     .frame(
                         width:
                             max(
-                                endX - startX,
+                                endX -
+                                    startX,
                                 6
                             ),
-                        height: 5
+                        height:
+                            6
                     )
                     .position(
                         x:
-                            (startX + endX) / 2,
+                            (
+                                startX +
+                                endX
+                            ) / 2,
                         y:
                             centerY
                     )
 
-                sliderHandle(
-                    type: .start,
-                    x: startX,
-                    y: centerY
+                handle(
+                    type:
+                        .start,
+                    x:
+                        startX,
+                    y:
+                        centerY
                 )
                 .gesture(
                     dragGesture(
-                        handle: .start,
-                        width: width,
-                        inset: inset,
-                        maximum: maximum
+                        handle:
+                            .start,
+                        width:
+                            width,
+                        inset:
+                            inset,
+                        maximum:
+                            maximum
                     )
                 )
 
-                sliderHandle(
-                    type: .end,
-                    x: endX,
-                    y: centerY
+                handle(
+                    type:
+                        .end,
+                    x:
+                        endX,
+                    y:
+                        centerY
                 )
                 .gesture(
                     dragGesture(
-                        handle: .end,
-                        width: width,
-                        inset: inset,
-                        maximum: maximum
+                        handle:
+                            .end,
+                        width:
+                            width,
+                        inset:
+                            inset,
+                        maximum:
+                            maximum
                     )
                 )
             }
         }
         .frame(
-            height: 38
+            height:
+                36
         )
         .opacity(
-            disabled ? 0.45 : 1
-        )
-        .accessibilityElement(
-            children: .contain
+            disabled
+            ? 0.45
+            : 1
         )
     }
 
-    // MARK: - Handle
+    // MARK: Handle
 
-    private func sliderHandle(
-        type: Handle,
-        x: CGFloat,
-        y: CGFloat
+    private func handle(
+        type:
+            Handle,
+        x:
+            CGFloat,
+        y:
+            CGFloat
     ) -> some View {
 
-        let isStart =
+        let color:
+            Color =
             type == .start
-
-        let tint: Color =
-            isStart
             ? .green
             : .red
 
-        return Circle()
-            .fill(.background)
-            .frame(
-                width: 28,
-                height: 28
-            )
-            .overlay {
-                Circle()
-                    .stroke(
-                        tint,
-                        lineWidth:
-                            activeHandle == type
-                            ? 2
-                            : 1.25
-                    )
-            }
-            .overlay {
-                Image(
-                    systemName:
-                        isStart
-                        ? "play.fill"
-                        : "flag.checkered"
+        let iconName =
+            type == .start
+            ? "play.fill"
+            : "flag.checkered"
+
+        return ZStack {
+
+            Circle()
+                .fill(
+                    .background
                 )
-                .font(
-                    .caption2.weight(
-                        .bold
-                    )
+                .frame(
+                    width:
+                        32,
+                    height:
+                        32
                 )
-                .foregroundStyle(
-                    tint
+
+            Circle()
+                .stroke(
+                    color,
+                    lineWidth:
+                        activeHandle ==
+                        type
+                        ? 2.5
+                        : 1.5
                 )
-            }
-            .scaleEffect(
-                activeHandle == type
-                ? 1.08
-                : 1
+                .frame(
+                    width:
+                        32,
+                    height:
+                        32
+                )
+
+            Image(
+                systemName:
+                    iconName
             )
-            .animation(
-                .easeOut(
-                    duration: 0.12
-                ),
-                value:
-                    activeHandle == type
+            .font(
+                .caption2.weight(
+                    .bold
+                )
             )
-            .position(
-                x: x,
-                y: y
+            .foregroundStyle(
+                color
             )
+        }
+        .scaleEffect(
+            activeHandle ==
+                type
+            ? 1.12
+            : 1
+        )
+        .position(
+            x:
+                x,
+            y:
+                y
+        )
     }
 
-    // MARK: - Gesture
+    // MARK: Drag
 
     private func dragGesture(
-        handle: Handle,
-        width: CGFloat,
-        inset: CGFloat,
-        maximum: Int
+        handle:
+            Handle,
+        width:
+            CGFloat,
+        inset:
+            CGFloat,
+        maximum:
+            Int
     ) -> some Gesture {
 
         DragGesture(
-            minimumDistance: 0
+            minimumDistance:
+                4,
+            coordinateSpace:
+                .local
         )
         .onChanged { value in
 
-            guard !disabled else {
+            guard
+                !disabled
+            else {
                 return
             }
 
-            activeHandle = handle
+            activeHandle =
+                handle
 
             let normalized =
                 min(
@@ -1363,7 +2860,8 @@ private struct RangeSlider:
                         (
                             value.location.x -
                             inset
-                        ) / width,
+                        ) /
+                        width,
                         0
                     ),
                     1
@@ -1396,12 +2894,19 @@ private struct RangeSlider:
                         )
                     )
 
-                if newValue != startIndex {
-                    startIndex = newValue
-                    onStartChanged(
-                        newValue
-                    )
+                guard
+                    newValue !=
+                        startIndex
+                else {
+                    return
                 }
+
+                startIndex =
+                    newValue
+
+                onStartChanged(
+                    newValue
+                )
 
             case .end:
 
@@ -1417,29 +2922,44 @@ private struct RangeSlider:
                         )
                     )
 
-                if newValue != endIndex {
-                    endIndex = newValue
-                    onEndChanged(
-                        newValue
-                    )
+                guard
+                    newValue !=
+                        endIndex
+                else {
+                    return
                 }
+
+                endIndex =
+                    newValue
+
+                onEndChanged(
+                    newValue
+                )
             }
         }
         .onEnded { _ in
-            activeHandle = nil
+
+            activeHandle =
+                nil
         }
     }
 
-    // MARK: - Position
+    // MARK: Position
 
     private func position(
-        index: Int,
-        maximum: Int,
-        width: CGFloat,
-        inset: CGFloat
+        index:
+            Int,
+        maximum:
+            Int,
+        width:
+            CGFloat,
+        inset:
+            CGFloat
     ) -> CGFloat {
 
-        guard maximum > 0 else {
+        guard
+            maximum > 0
+        else {
             return inset
         }
 

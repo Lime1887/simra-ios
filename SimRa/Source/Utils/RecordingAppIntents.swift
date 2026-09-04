@@ -1,166 +1,211 @@
+//
 //  RecordingAppIntents.swift
 //  SimRa
 //
-//  App Intents and Siri Shortcuts for starting/stopping recordings.
+//  App Intents and Live Activity actions.
+//  Copyright © 2026 Mobile Cloud Computing an der Fakultät IV (Elektrotechnik und Informatik) der TU Berlin. All rights reserved.
 //
 
 import AppIntents
+import Foundation
 
+enum WidgetRecordingCommandStore {
+
+    private static let suiteName =
+        "group.de.tu-berlin.mcc.simra"
+
+    private static let commandKey =
+        "pendingRecordingCommand"
+
+    private static let incidentEventsKey =
+        "liveActivityIncidentEvents"
+
+    private static var defaults: UserDefaults {
+        UserDefaults(suiteName: suiteName) ?? .standard
+    }
+
+    static func enqueueStop() {
+        defaults.set("stop", forKey: commandKey)
+    }
+
+    static func enqueueIncident(
+        _ incidentType: Int,
+        source: String = "Live Activity",
+        participantMask: Int = 0,
+        frightening: Bool = false,
+        comment: String? = nil
+    ) {
+        guard incidentType >= 0 else {
+            return
+        }
+
+        var events =
+            defaults.array(forKey: incidentEventsKey)
+            as? [[String: Any]]
+            ?? []
+
+        events.append([
+            "id": UUID().uuidString,
+            "tripId": 0,
+            "incidentType": incidentType,
+            "timestamp": Date().timeIntervalSince1970,
+            "source": source,
+            "participantMask": participantMask,
+            "frightening": frightening,
+            "comment": comment ?? ""
+        ])
+
+        if events.count > 100 {
+            events.removeFirst(events.count - 100)
+        }
+
+        defaults.set(events, forKey: incidentEventsKey)
+        defaults.set(events.count, forKey: "pendingLiveActivityIncidents")
+    }
+
+    static func takeCommand()
+        -> (command: String, incidentType: Int?)?
+    {
+        guard let command = defaults.string(forKey: commandKey) else {
+            return nil
+        }
+
+        defaults.removeObject(forKey: commandKey)
+
+        return (command, nil)
+    }
+}
+
+// MARK: - Stop Recording
+
+@available(iOS 16.2, *)
+struct StopRecordingIntent: LiveActivityIntent {
+
+    static let title: LocalizedStringResource =
+        "Stop Recording"
+
+    static let description = IntentDescription(
+        "Stop the active SimRa recording."
+    )
+
+    static var openAppWhenRun: Bool = true
+
+    func perform() async throws -> some IntentResult {
+        WidgetRecordingCommandStore.enqueueStop()
+
+        return .result()
+    }
+}
+
+// MARK: - Mark General Incident
+
+@available(iOS 16.2, *)
+struct MarkGeneralIncidentIntent: LiveActivityIntent {
+
+    static let title: LocalizedStringResource =
+        "Mark hazard"
+
+    static let description = IntentDescription(
+        "Record a hazard during the active SimRa recording."
+    )
+
+    static var openAppWhenRun: Bool = true
+
+    func perform() async throws -> some IntentResult {
+        WidgetRecordingCommandStore.enqueueIncident(
+            0,
+            source: "Live Activity"
+        )
+
+        return .result()
+    }
+}
+
+#if !WIDGET_EXTENSION
 // MARK: - Start Recording
 
 @available(iOS 16.0, *)
 struct StartRecordingIntent: AppIntent {
 
-    static var title: LocalizedStringResource =
-        "Aufzeichnung starten"
+    static let title: LocalizedStringResource =
+        "Start Recording"
 
-    static var description =
-        IntentDescription(
-            "Starts a SimRa recording."
-        )
+    static let description = IntentDescription(
+        "Start a new SimRa recording."
+    )
 
-    static var openAppWhenRun = true
+    static var openAppWhenRun: Bool = true
 
-    func perform()
-        async
-        throws
-        -> some IntentResult & ProvidesDialog
-    {
-        let started =
-            await MainActor.run {
-                RecordingShortcutBridge.startRecording()
-            }
+    func perform() async throws -> some IntentResult & ProvidesDialog {
+        let started = await MainActor.run {
+            RecordingShortcutBridge.startRecording()
+        }
 
         guard started else {
             throw RecordingShortcutError.alreadyRecording
         }
 
         return .result(
-            dialog:
-                IntentDialog(
-                    LocalizationHelper.localizedStringResource(
-                        for:
-                            "Recording started."
-                    )
-                )
-        )
-    }
-}
-
-// MARK: - Stop Recording
-
-@available(iOS 16.0, *)
-struct StopRecordingIntent: AppIntent {
-
-    static var title: LocalizedStringResource =
-        "Aufzeichnung stoppen"
-
-    static var description =
-        IntentDescription(
-            "Stops the active SimRa recording."
-        )
-
-    static var openAppWhenRun = true
-
-    func perform()
-        async
-        throws
-        -> some IntentResult & ProvidesDialog
-    {
-        let stopped =
-            await MainActor.run {
-                RecordingShortcutBridge.stopRecording()
-            }
-
-        guard stopped else {
-            throw RecordingShortcutError.notRecording
-        }
-
-        return .result(
-            dialog:
-                IntentDialog(
-                    LocalizationHelper.localizedStringResource(
-                        for:
-                            "Recording stopped."
-                    )
-                )
-        )
-    }
-}
-
-// MARK: - Mark Incident
-
-@available(iOS 16.0, *)
-struct MarkGeneralIncidentIntent: AppIntent {
-
-    static var title: LocalizedStringResource =
-        "Mark Danger"
-
-    static var description =
-        IntentDescription(
-            "Marks a danger during the current SimRa recording."
-        )
-
-    static var openAppWhenRun = true
-
-    func perform()
-        async
-        throws
-        -> some IntentResult & ProvidesDialog
-    {
-        let marked = await MainActor.run {
-            RecordingShortcutBridge.markIncident(
-                0,
-                source: "Siri"
+            dialog: IntentDialog(
+                "Recording started."
             )
-        }
-
-        guard marked else {
-            throw RecordingShortcutError.notRecording
-        }
-
-        return .result(
-            dialog:
-                IntentDialog("Gefahr erfasst.")
         )
     }
 }
+
+// MARK: - Typed Incident
 
 @available(iOS 16.0, *)
 struct MarkIncidentIntent: AppIntent {
 
-    static var title: LocalizedStringResource =
+    static let title: LocalizedStringResource =
         "Mark Incident"
 
-    static var description =
-        IntentDescription(
-            "Marks an incident or hazard during the current SimRa recording."
-        )
+    static let description = IntentDescription(
+        "Record an incident with a hazard type."
+    )
 
-    static var openAppWhenRun = true
+    static var openAppWhenRun: Bool = true
 
-    @Parameter(title: "Incident Type")
-    var incidentType: IncidentType?
+    @Parameter(title: "Hazard type")
+    var hazardType: IncidentType?
+
+    @Parameter(title: "Involved road user")
+    var participant: IncidentParticipant?
+
+    @Parameter(title: "Frightening")
+    var frightening: Bool
+
+    @Parameter(title: "Comment")
+    var comment: String?
 
     init() {
-        self.incidentType = .generalHazard
+        self.hazardType = .generalHazard
+        self.participant = nil
+        self.frightening = false
+        self.comment = nil
     }
 
-    init(incidentType: IncidentType) {
-        self.incidentType = incidentType
+    init(hazardType: IncidentType) {
+        self.hazardType = hazardType
+        self.participant = nil
+        self.frightening = false
+        self.comment = nil
     }
 
-    func perform()
-        async
-        throws
-        -> some IntentResult & ProvidesDialog
-    {
-        let selectedType = incidentType ?? .generalHazard
+    func perform() async throws -> some IntentResult & ProvidesDialog {
+        let selectedType = hazardType ?? .generalHazard
 
         let marked = await MainActor.run {
             RecordingShortcutBridge.markIncident(
                 selectedType.incidentID,
-                source: "Siri"
+                source: "Siri",
+                participantMask:
+                    participant?.maskValue ?? 0,
+                frightening:
+                    frightening,
+                comment:
+                    comment
             )
         }
 
@@ -169,16 +214,102 @@ struct MarkIncidentIntent: AppIntent {
         }
 
         return .result(
-            dialog:
-                IntentDialog(
-                    LocalizationHelper.localizedStringResource(
-                        for:
-                            "\(selectedType.localizedName) erfasst. Details kannst du nach der Fahrt ausfüllen."
-                    )
-                )
+            dialog: IntentDialog(
+                "Hazard recorded."
+            )
         )
     }
 }
+
+@available(iOS 16.0, *)
+enum IncidentParticipant: String, AppEnum {
+    case car
+    case taxi
+    case delivery
+    case bus
+    case pedestrian
+    case bicycle
+    case motorcycle
+    case escooter
+    case other
+
+    static var typeDisplayRepresentation: TypeDisplayRepresentation {
+        TypeDisplayRepresentation(name: "Involved road user")
+    }
+
+    static var caseDisplayRepresentations:
+        [IncidentParticipant: DisplayRepresentation] {
+        [
+            .car: "Car",
+            .taxi: "Taxi",
+            .delivery: "Delivery vehicle",
+            .bus: "Bus",
+            .pedestrian: "Pedestrian",
+            .bicycle: "Bicycle",
+            .motorcycle: "Motorcycle",
+            .escooter: "E-scooter",
+            .other: "Other"
+        ]
+    }
+
+    var maskValue: Int {
+        1 << rawIndex
+    }
+
+    private var rawIndex: Int {
+        switch self {
+        case .car: return 0
+        case .taxi: return 1
+        case .delivery: return 2
+        case .bus: return 3
+        case .pedestrian: return 4
+        case .bicycle: return 5
+        case .motorcycle: return 6
+        case .escooter: return 7
+        case .other: return 8
+        }
+    }
+}
+
+@available(iOS 16.0, *)
+struct MarkShortcutIncidentIntent: AppIntent {
+    static let title: LocalizedStringResource = "Mark Incident"
+    static let description = IntentDescription(
+        "Record an incident from a Shortcut."
+    )
+    static var openAppWhenRun: Bool = true
+
+    func perform() async throws -> some IntentResult {
+        WidgetRecordingCommandStore.enqueueIncident(
+            0,
+            source: "Shortcut",
+            comment: nil
+        )
+        return .result()
+    }
+}
+
+// MARK: - Errors
+
+@available(iOS 16.0, *)
+enum RecordingShortcutError:
+    Error,
+    CustomLocalizedStringResourceConvertible {
+
+    case alreadyRecording
+    case notRecording
+
+    var localizedStringResource: LocalizedStringResource {
+        switch self {
+        case .alreadyRecording:
+            return "A SimRa recording is already active."
+
+        case .notRecording:
+            return "No SimRa recording is active."
+        }
+    }
+}
+#endif
 
 // MARK: - Incident Type
 
@@ -196,7 +327,7 @@ enum IncidentType: String, AppEnum {
 
     static var typeDisplayRepresentation: TypeDisplayRepresentation {
         TypeDisplayRepresentation(
-            name: "Incident Type"
+            name: "Gefahrentyp"
         )
     }
 
@@ -204,13 +335,13 @@ enum IncidentType: String, AppEnum {
         [IncidentType: DisplayRepresentation] {
         [
             .generalHazard:
-                "Gefahr / Incident",
+                "Gefahr",
 
             .closePassing:
                 "Zu nahes Überholen",
 
             .dooring:
-                "Dooring / Autotür",
+                "Dooring",
 
             .turningAccident:
                 "Abbiegeunfall",
@@ -229,7 +360,6 @@ enum IncidentType: String, AppEnum {
         ]
     }
 
-    /// Numeric incident ID used by the existing SimRa recording bridge.
     var incidentID: Int {
         switch self {
         case .generalHazard:
@@ -287,138 +417,39 @@ enum IncidentType: String, AppEnum {
     }
 }
 
-// MARK: - Errors
-
-@available(iOS 16.0, *)
-enum RecordingShortcutError:
-    Error,
-    CustomLocalizedStringResourceConvertible
-{
-    case alreadyRecording
-    case notRecording
-    case invalidIncidentType
-
-    var localizedStringResource:
-        LocalizedStringResource
-    {
-        switch self {
-        case .alreadyRecording:
-            return
-                LocalizationHelper.localizedStringResource(
-                    for:
-                        "Eine SimRa-Aufnahme läuft bereits."
-                )
-
-        case .notRecording:
-            return
-                LocalizationHelper.localizedStringResource(
-                    for:
-                        "Aktuell läuft keine SimRa-Aufnahme."
-                )
-
-        case .invalidIncidentType:
-            return
-                LocalizationHelper.localizedStringResource(
-                    for:
-                        "Kein Vorfalltyp ausgewählt."
-                )
-        }
-    }
-}
-
 // MARK: - App Shortcuts
 
+#if !WIDGET_EXTENSION
 @available(iOS 16.0, *)
-struct SimRaShortcuts:
-    AppShortcutsProvider
-{
+struct SimRaShortcuts: AppShortcutsProvider {
 
     @AppShortcutsBuilder
-    static var appShortcuts:
-        [AppShortcut]
-    {
+    static var appShortcuts: [AppShortcut] {
 
         AppShortcut(
-            intent:
-                StartRecordingIntent(),
-            phrases:
-                [
-                    "Aufzeichnung in \(.applicationName) starten",
-                    "Fahrt in \(.applicationName) starten"
-                ],
-            shortTitle:
-                "Aufzeichnung starten",
-            systemImageName:
-                "play.fill"
-        )
-
-        AppShortcut(
-            intent:
-                StopRecordingIntent(),
-            phrases:
-                [
-                    "Aufzeichnung in \(.applicationName) stoppen",
-                    "Fahrt in \(.applicationName) beenden"
-                ],
-            shortTitle:
-                "Aufzeichnung stoppen",
-            systemImageName:
-                "stop.fill"
-        )
-
-        // Incident marking shortcuts
-        AppShortcut(
-            intent: MarkGeneralIncidentIntent(),
+            intent: StartRecordingIntent(),
             phrases: [
-                "Gefahr melden in \(.applicationName)",
-                "Gefahr in \(.applicationName) melden",
-                "Gefahrenstelle in \(.applicationName) melden",
-                "Incident in \(.applicationName) melden",
-                "Vorfall in \(.applicationName) erfassen",
-                "Erfasse einen Vorfall in \(.applicationName)",
-                "Melde einen Vorfall in \(.applicationName)",
-                "Mark hazard in \(.applicationName)",
-                "Mark incident in \(.applicationName)",
-                "Mark close passing in \(.applicationName)",
-                "Mark dooring in \(.applicationName)",
-                "Zeichne zu nahes Überholen in \(.applicationName) auf",
-                "Zeichne Einparkendes Auto in \(.applicationName) auf",
-                "Zeichne Abbiegeunfall in \(.applicationName) auf",
-                "Zeichne Gegenverkehr in \(.applicationName) auf",
-                "Zeichne Auffahren in \(.applicationName) auf",
-                "Zeichne Türöffnen in \(.applicationName) auf",
-                "Zeichne Ausweichen in \(.applicationName) auf"
+                "Aufzeichnung in \(.applicationName) starten",
+                "Fahrt in \(.applicationName) starten",
+                "Start a recording in \(.applicationName)",
+                "Start a ride in \(.applicationName)"
             ],
-            shortTitle: "Vorfall erfassen",
-            systemImageName: "exclamationmark.triangle"
+            shortTitle: "Start Recording",
+            systemImageName: "play.fill"
+        )
+
+        AppShortcut(
+            intent: MarkShortcutIncidentIntent(),
+            phrases: [
+                "Gefahr in \(.applicationName) melden",
+                "Gefahr in \(.applicationName) erfassen",
+                "Gefahrenstelle in \(.applicationName) melden",
+                "Vorfall in \(.applicationName) erfassen"
+            ],
+            shortTitle: "Mark Incident",
+            systemImageName:
+                "exclamationmark.triangle.fill"
         )
     }
 }
-
-// MARK: - Localization
-
-struct LocalizationHelper {
-
-    static func localizedString(
-        for key: String
-    ) -> String {
-
-        NSLocalizedString(
-            key,
-            bundle:
-                .main,
-            comment:
-                ""
-        )
-    }
-
-    static func localizedStringResource(
-        for key: String
-    ) -> LocalizedStringResource {
-
-        LocalizedStringResource(
-            stringLiteral:
-                key
-        )
-    }
-}
+#endif

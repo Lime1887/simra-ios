@@ -10,6 +10,14 @@
 import Foundation
 import SwiftUI
 import MessageUI
+import UserNotifications
+
+private struct RideReminderRule: Codable, Identifiable, Equatable {
+    let id: UUID
+    var weekday: Int
+    var hour: Int
+    var minute: Int
+}
 
 // MARK: - Settings View
 
@@ -56,12 +64,116 @@ struct SettingsView: View {
     @State
     private var hasEnoughTripsForRecent = false
 
+    @AppStorage("offlineMapMode")
+    private var offlineMapMode = false
+
+    @AppStorage("showRecordedRoute")
+    private var showRecordedRoute = true
+
+    @AppStorage("appAppearance")
+    private var appAppearance = "system"
+
+    @State private var reminderRules: [RideReminderRule] = []
+    @State private var reminderWeekday = 2
+    @State private var reminderHour = 8
+    @State private var reminderMinute = 0
+
     // MARK: - Body
 
     var body: some View {
         List {
 
             // MARK: General
+
+            Section {
+                Toggle(
+                    NSLocalizedString("Offline map mode", comment: "Disable map tiles during recording"),
+                    isOn: $offlineMapMode
+                )
+
+                Toggle(
+                    NSLocalizedString("Show recorded route", comment: "Show route on map"),
+                    isOn: $showRecordedRoute
+                )
+
+                Picker(
+                    NSLocalizedString("Appearance", comment: "App appearance"),
+                    selection: $appAppearance
+                ) {
+                    Text(NSLocalizedString("System", comment: "System appearance")).tag("system")
+                    Text(NSLocalizedString("Light", comment: "Light appearance")).tag("light")
+                    Text(NSLocalizedString("Dark", comment: "Dark appearance")).tag("dark")
+                }
+            } header: {
+                Text(NSLocalizedString("Recording and map", comment: "Recording and map settings"))
+            }
+
+            Section {
+                Toggle(
+                    NSLocalizedString("Ride reminder", comment: "Weekly ride reminder"),
+                    isOn: Binding(
+                        get: { !reminderRules.isEmpty },
+                        set: { enabled in
+                            if !enabled { reminderRules.removeAll() }
+                            else if reminderRules.isEmpty {
+                                reminderRules.append(newReminderRule())
+                            }
+                            scheduleRideReminders()
+                        }
+                    )
+                )
+
+                if !reminderRules.isEmpty {
+                    Picker(
+                        NSLocalizedString("Weekday", comment: "Reminder weekday"),
+                        selection: $reminderWeekday
+                    ) {
+                        ForEach(1...7, id: \.self) { day in
+                            Text(weekdayName(day)).tag(day)
+                        }
+                    }
+
+                    DatePicker(
+                        NSLocalizedString("Time", comment: "Reminder time"),
+                        selection: reminderDateBinding,
+                        displayedComponents: .hourAndMinute
+                    )
+
+                    Button {
+                        reminderRules.append(
+                            RideReminderRule(
+                                id: UUID(),
+                                weekday: reminderWeekday,
+                                hour: reminderHour,
+                                minute: reminderMinute
+                            )
+                        )
+                        scheduleRideReminders()
+                    } label: {
+                        Label(
+                            NSLocalizedString("Save reminder", comment: "Save reminder settings"),
+                            systemImage: "bell.badge"
+                        )
+                    }
+                }
+
+                ForEach(reminderRules) { rule in
+                    HStack {
+                        Text(ruleDescription(rule))
+                        Spacer()
+                        Button {
+                            reminderRules.removeAll { $0.id == rule.id }
+                            scheduleRideReminders()
+                        } label: {
+                            Image(systemName: "minus.circle.fill")
+                        }
+                        .buttonStyle(.borderless)
+                        .foregroundStyle(.red)
+                    }
+                }
+            } header: {
+                Text(NSLocalizedString("Notifications", comment: "Notification settings"))
+            }
 
             Section {
                 Button {
@@ -138,6 +250,15 @@ struct SettingsView: View {
 
             Section {
                 NavigationLink {
+                    StatisticsDashboardView()
+                } label: {
+                    Label(
+                        NSLocalizedString("Statistics", comment: "Statistics"),
+                        systemImage: "chart.bar.xaxis"
+                    )
+                }
+
+                NavigationLink {
                     ProfileView()
                 } label: {
                     Label(
@@ -192,6 +313,9 @@ struct SettingsView: View {
             )
         )
         .navigationBarTitleDisplayMode(.inline)
+        .task {
+            loadReminderRules()
+        }
 
         // MARK: Diagnostic Confirmation
 
@@ -383,6 +507,98 @@ struct SettingsView: View {
         }
 
         openURL(url)
+    }
+
+    private var reminderDateBinding: Binding<Date> {
+        Binding(
+            get: {
+                Calendar.current.date(
+                    from: DateComponents(
+                        hour: reminderHour,
+                        minute: reminderMinute
+                    )
+                ) ?? .now
+            },
+            set: { date in
+                let components = Calendar.current.dateComponents(
+                    [.hour, .minute],
+                    from: date
+                )
+                reminderHour = components.hour ?? 8
+                reminderMinute = components.minute ?? 0
+            }
+        )
+    }
+
+    private func weekdayName(_ weekday: Int) -> String {
+        let symbols = Calendar.current.weekdaySymbols
+        guard symbols.indices.contains(weekday - 1) else {
+            return ""
+        }
+        return symbols[weekday - 1]
+    }
+
+    private func newReminderRule() -> RideReminderRule {
+        RideReminderRule(
+            id: UUID(),
+            weekday: reminderWeekday,
+            hour: reminderHour,
+            minute: reminderMinute
+        )
+    }
+
+    private func ruleDescription(_ rule: RideReminderRule) -> String {
+        let day = weekdayName(rule.weekday)
+        return String(format: "%@ · %02d:%02d", day, rule.hour, rule.minute)
+    }
+
+    private func loadReminderRules() {
+        guard
+            let data = UserDefaults.standard.data(forKey: "rideReminderRules"),
+            let rules = try? JSONDecoder().decode([RideReminderRule].self, from: data)
+        else { return }
+        reminderRules = rules
+    }
+
+    private func scheduleRideReminders() {
+        if let data = try? JSONEncoder().encode(reminderRules) {
+            UserDefaults.standard.set(data, forKey: "rideReminderRules")
+        }
+
+        let center = UNUserNotificationCenter.current()
+        let identifiers = reminderRules.map { "simra.ride.reminder.\($0.id.uuidString)" }
+        let previousIdentifiers = UserDefaults.standard.stringArray(
+            forKey: "rideReminderNotificationIDs"
+        ) ?? []
+        center.removePendingNotificationRequests(
+            withIdentifiers: previousIdentifiers
+        )
+        UserDefaults.standard.set(
+            identifiers,
+            forKey: "rideReminderNotificationIDs"
+        )
+
+        center.requestAuthorization(options: [.alert, .sound]) { granted, _ in
+            guard granted else {
+                return
+            }
+
+            for (rule, identifier) in zip(self.reminderRules, identifiers) {
+                var components = DateComponents()
+                components.weekday = rule.weekday
+                components.hour = rule.hour
+                components.minute = rule.minute
+                let content = UNMutableNotificationContent()
+                content.title = NSLocalizedString("Ready to ride?", comment: "Ride reminder title")
+                content.body = NSLocalizedString("Start a SimRa recording for your next ride.", comment: "Ride reminder body")
+                content.sound = .default
+                center.add(UNNotificationRequest(
+                    identifier: identifier,
+                    content: content,
+                    trigger: UNCalendarNotificationTrigger(dateMatching: components, repeats: true)
+                ))
+            }
+        }
     }
 
     // MARK: - Localized URL
@@ -806,6 +1022,117 @@ struct SettingsView: View {
             )
 
         showResultAlert = true
+    }
+}
+
+private struct StatisticsDashboardView: View {
+    private struct Summary: Identifiable {
+        let id: Int
+        let date: Date
+        let distance: Int
+        let incidents: Int
+        let uploaded: Bool
+    }
+
+    @State private var summaries: [Summary] = []
+
+    private var totalDistance: Int {
+        summaries.reduce(0) { $0 + $1.distance }
+    }
+
+    private var totalIncidents: Int {
+        summaries.reduce(0) { $0 + $1.incidents }
+    }
+
+    private var uploadedShare: Double {
+        guard !summaries.isEmpty else { return 0 }
+        return Double(summaries.filter(\.uploaded).count) / Double(summaries.count)
+    }
+
+    private var timeOfDay: [Int] {
+        summaries.reduce(into: Array(repeating: 0, count: 4)) { result, summary in
+            let hour = Calendar.current.component(.hour, from: summary.date)
+            result[min(hour / 6, 3)] += 1
+        }
+    }
+
+    private var yearly: [(Int, Int)] {
+        Dictionary(grouping: summaries) {
+            Calendar.current.component(.year, from: $0.date)
+        }
+        .map { ($0.key, $0.value.count) }
+        .sorted { $0.0 > $1.0 }
+    }
+
+    var body: some View {
+        List {
+            Section {
+                metric("Trips", value: "\(summaries.count)", symbol: "bicycle")
+                metric("Total distance", value: formatDistance(totalDistance), symbol: "point.topleft.down.curvedto.point.bottomright.up")
+                metric("Incidents", value: "\(totalIncidents)", symbol: "exclamationmark.triangle")
+                metric("Uploaded", value: "\(Int(uploadedShare * 100))%", symbol: "arrow.up.circle")
+            } header: {
+                Text(NSLocalizedString("Overview", comment: "Statistics overview"))
+            }
+
+            Section {
+                HStack(alignment: .bottom, spacing: 12) {
+                    ForEach(Array(timeOfDay.enumerated()), id: \.offset) { index, count in
+                        VStack(spacing: 4) {
+                            RoundedRectangle(cornerRadius: 4)
+                                .fill(.tint)
+                                .frame(height: CGFloat(max(count, 1)) * 12)
+                            Text(["00–06", "06–12", "12–18", "18–24"][index])
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+                }
+                .frame(height: 120, alignment: .bottom)
+            } header: {
+                Text(NSLocalizedString("Trips by time of day", comment: "Time of day distribution"))
+            }
+
+            Section {
+                ForEach(yearly, id: \.0) { year, count in
+                    LabeledContent(String(year), value: "\(count)")
+                }
+            } header: {
+                Text(NSLocalizedString("Trips by year", comment: "Yearly distribution"))
+            }
+        }
+        .navigationTitle(NSLocalizedString("Statistics", comment: "Statistics"))
+        .navigationBarTitleDisplayMode(.inline)
+        .task {
+            loadSummaries()
+        }
+    }
+
+    private func metric(_ title: String, value: String, symbol: String) -> some View {
+        LabeledContent {
+            Text(value).fontWeight(.semibold).monospacedDigit()
+        } label: {
+            Label(NSLocalizedString(title, comment: "Statistics metric"), systemImage: symbol)
+        }
+    }
+
+    private func formatDistance(_ meters: Int) -> String {
+        String(format: "%.1f km", Double(meters) / 1000)
+    }
+
+    private func loadSummaries() {
+        summaries = TripInfo.allStoredIdentifiers().compactMap { number in
+            guard let info = TripInfo(fromStorage: number.intValue) else { return nil }
+            return Summary(
+                id: info.identifier,
+                date: info.duration.startDate,
+                distance: info.length,
+                incidents: info.validAnnotationsCount,
+                uploaded: info.uploaded
+            )
+        }
+        .sorted { $0.date > $1.date }
     }
 }
 

@@ -229,6 +229,10 @@ public final class SimRaRecordingActivityManager {
 
                 return nil
 
+            case .ended:
+
+                return nil
+
             @unknown default:
 
                 return currentActivity

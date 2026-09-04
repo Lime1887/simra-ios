@@ -10,6 +10,7 @@
 import SwiftUI
 import MapKit
 import WidgetKit
+import Foundation
 
 // MARK: - Recording Incident
 
@@ -20,7 +21,13 @@ struct RecordingIncident: Identifiable {
     let source: String
 
     var isQuickRecorded: Bool {
-        source != "Manual"
+        switch source.lowercased() {
+        case "siri", "widget", "live activity", "shortcut", "watch":
+            return true
+
+        default:
+            return false
+        }
     }
 }
 
@@ -53,9 +60,6 @@ final class MainViewModel: ObservableObject {
 
         static let routeCoordinates =
             "widgetRouteCoordinates"
-
-        static let tripStatistics =
-            "widgetTripStatistics"
     }
 
     private struct WidgetCoordinate: Codable {
@@ -64,26 +68,21 @@ final class MainViewModel: ObservableObject {
         let longitude: Double
     }
 
-    private struct WidgetTripStatistic: Codable {
-
-        let date: Date
-        let distanceMeters: Double
-    }
-
     // MARK: - Map
 
-    @Published var cameraPosition:
-        MapCameraPosition = .userLocation(
+    @Published
+    var cameraPosition: MapCameraPosition =
+        .userLocation(
             fallback: .automatic
         )
 
     // MARK: - Recording
 
-    @Published private(set)
-    var isRecording = false
+    @Published
+    private(set) var isRecording = false
 
-    @Published private(set)
-    var recordingTransitionInProgress = false
+    @Published
+    private(set) var recordingTransitionInProgress = false
 
     @Published
     var recordingStatusText: String?
@@ -91,14 +90,40 @@ final class MainViewModel: ObservableObject {
     @Published
     var recordingRouteOverlay: MKPolyline?
 
-    @Published private(set)
-    var recordingIncidents:
-        [RecordingIncident] = []
+    @Published
+    private(set) var recordingRouteCoordinates:
+        [CLLocationCoordinate2D] = []
+
+    @Published
+    private(set) var isLowPowerMode =
+        ProcessInfo.processInfo.isLowPowerModeEnabled
+
+    @Published
+    var offlineMapMode =
+        UserDefaults.standard.bool(forKey: "offlineMapMode")
+
+    @Published
+    var showRecordedRoute =
+        UserDefaults.standard.object(forKey: "showRecordedRoute") as? Bool
+        ?? true
+
+    var shouldRenderRecordingRoute: Bool {
+        showRecordedRoute && !isLowPowerMode
+    }
+
+    @Published
+    private(set) var recordingIncidents: [RecordingIncident] = []
 
     // MARK: - Navigation
 
     @Published
     var navigateToTrips = false
+
+    @Published
+    var tripToEdit: Trip?
+
+    @Published
+    var navigateToTripEdit = false
 
     // MARK: - Bike Sensor
 
@@ -126,8 +151,7 @@ final class MainViewModel: ObservableObject {
 
     // MARK: - Dependencies
 
-    private let appDelegate =
-        AppDelegate.shared()
+    private let appDelegate = AppDelegate.shared()
 
     // MARK: - Recording Runtime
 
@@ -141,18 +165,21 @@ final class MainViewModel: ObservableObject {
 
     // MARK: - Notifications
 
-    private var recordingStateObserver:
-        NSObjectProtocol?
+    private var recordingStateObserver: NSObjectProtocol?
 
-    private var incidentObserver:
-        NSObjectProtocol?
+    private var incidentObserver: NSObjectProtocol?
+
+    private var incidentAnalysisObserver: NSObjectProtocol?
+
+    private var powerModeObserver: NSObjectProtocol?
+
+    private var preferencesObserver: NSObjectProtocol?
 
     // MARK: - Route Cache
 
     private var lastOverlayPointCount = 0
 
-    private var lastRouteUpdateDate:
-        Date?
+    private var lastRouteUpdateDate: Date?
 
     // MARK: - Metrics Cache
 
@@ -162,8 +189,7 @@ final class MainViewModel: ObservableObject {
 
     private var lastMetricsPointCount = 0
 
-    private var lastMetricsUpdate:
-        Date?
+    private var lastMetricsUpdate: Date?
 
     private var isComputingMetrics = false
 
@@ -171,14 +197,9 @@ final class MainViewModel: ObservableObject {
 
     private var lastWidgetRoutePointCount = -1
 
-    private var lastWidgetTimelineReload:
-        Date?
+    private var lastWidgetTimelineReload: Date?
 
-    private var lastWidgetSyncDate:
-        Date?
-
-    private var widgetStatisticsRefreshScheduled =
-        false
+    private var lastWidgetSyncDate: Date?
 
     // MARK: - Init
 
@@ -188,9 +209,33 @@ final class MainViewModel: ObservableObject {
         setupBluetooth()
         setupObservers()
 
-        // Wichtig:
-        // Beim App-Start NICHT die komplette
-        // historische Widget-Statistik neu berechnen.
+        powerModeObserver = NotificationCenter.default.addObserver(
+            forName: Notification.Name.NSProcessInfoPowerStateDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.isLowPowerMode =
+                    ProcessInfo.processInfo.isLowPowerModeEnabled
+            }
+        }
+
+        preferencesObserver = NotificationCenter.default.addObserver(
+            forName: UserDefaults.didChangeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                guard let self else { return }
+                self.offlineMapMode = UserDefaults.standard.bool(
+                    forKey: "offlineMapMode"
+                )
+                self.showRecordedRoute = UserDefaults.standard.object(
+                    forKey: "showRecordedRoute"
+                ) as? Bool ?? true
+            }
+        }
+
         syncRecordingState(
             refreshHistoricalStatistics: false
         )
@@ -198,22 +243,24 @@ final class MainViewModel: ObservableObject {
 
     deinit {
 
-        if let observer =
-            recordingStateObserver {
-
-            NotificationCenter.default
-                .removeObserver(
-                    observer
-                )
+        if let observer = recordingStateObserver {
+            NotificationCenter.default.removeObserver(observer)
         }
 
-        if let observer =
-            incidentObserver {
+        if let observer = incidentObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
 
-            NotificationCenter.default
-                .removeObserver(
-                    observer
-                )
+        if let observer = incidentAnalysisObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
+
+        if let observer = powerModeObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
+
+        if let observer = preferencesObserver {
+            NotificationCenter.default.removeObserver(observer)
         }
 
         timer?.invalidate()
@@ -223,84 +270,127 @@ final class MainViewModel: ObservableObject {
 
     private func setupObservers() {
 
+        // Recording state changes.
+
         recordingStateObserver =
             NotificationCenter.default.addObserver(
-                forName:
-                    .recordingSessionDidChange,
-                object:
-                    nil,
-                queue:
-                    .main
+                forName: .recordingSessionDidChange,
+                object: nil,
+                queue: .main
             ) { [weak self] _ in
 
                 Task { @MainActor in
-                    self?.syncRecordingState()
-                }
-            }
 
-        incidentObserver =
-            NotificationCenter.default.addObserver(
-                forName:
-                    .incidentMarked,
-                object:
-                    nil,
-                queue:
-                    .main
-            ) { [weak self] _ in
-
-                Task { @MainActor in
                     guard let self else {
                         return
                     }
 
-                    self.updateRouteOverlay(
-                        force: true
-                    )
-
-                    self.synchronizeWidgetState(
-                        reload: true
-                    )
+                    self.syncRecordingState()
                 }
             }
+
+        // Incident created from:
+        // app, Siri, Widget, Live Activity, etc.
+
+        incidentObserver =
+            NotificationCenter.default.addObserver(
+                forName: .incidentMarked,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+
+                Task { @MainActor in
+                    self?.refreshRecordingPresentation()
+                }
+            }
+
+        // Sensor analysis may finish asynchronously.
+
+        incidentAnalysisObserver =
+            NotificationCenter.default.addObserver(
+                forName: .incidentAnalysisDidFinish,
+                object: nil,
+                queue: .main
+            ) { [weak self] notification in
+
+                Task { @MainActor in
+
+                    guard
+                        let self,
+                        let trip =
+                            notification.object as? Trip,
+                        let activeTrip =
+                            self.appDelegate.activeTrip
+                    else {
+                        return
+                    }
+
+                    guard
+                        activeTrip.identifier ==
+                        trip.identifier
+                    else {
+                        return
+                    }
+
+                    self.refreshRecordingPresentation()
+                }
+            }
+    }
+
+    // MARK: - Recording Presentation
+
+    private func refreshRecordingPresentation() {
+
+        guard appDelegate.activeTrip != nil else {
+            return
+        }
+
+        refreshIncidentCacheOnly()
+
+        updateRouteOverlay(
+            force: true
+        )
+
+        updateStatusText()
+
+        synchronizeWidgetState(
+            reload: false
+        )
     }
 
     // MARK: - Recording
 
     func toggleRecording() {
 
-        guard
-            !recordingTransitionInProgress
-        else {
+        guard !recordingTransitionInProgress else {
             return
         }
 
-        let targetState =
-            !isRecording
+        let targetState = !isRecording
 
-        recordingTransitionInProgress =
-            true
-
-        pendingRecordingTarget =
-            targetState
+        recordingTransitionInProgress = true
+        pendingRecordingTarget = targetState
 
         if targetState {
 
-            // Nur den eigentlichen Request absetzen.
-            // Keine nachgelagerte Berechnung hier.
-            _ =
-                appDelegate
-                .startRecordingRequested()
+            let started =
+                appDelegate.startRecordingRequested()
+
+            if !started {
+                recordingTransitionInProgress = false
+                pendingRecordingTarget = nil
+            }
 
         } else {
 
-            // Nur den eigentlichen Request absetzen.
-            _ =
-                appDelegate
-                .stopRecordingRequested()
-        }
+            let stopped =
+                appDelegate.stopRecordingRequested()
 
-        // Der tatsächliche Zustand wird über
-        // recordingSessionDidChange synchronisiert.
+            if !stopped {
+                recordingTransitionInProgress = false
+                pendingRecordingTarget = nil
+            }
+        }
     }
 
     // MARK: - Incident
@@ -311,22 +401,16 @@ final class MainViewModel: ObservableObject {
             return
         }
 
-        _ =
-            RecordingShortcutBridge
-            .markIncident(
-                0,
-                source: "Button"
-            )
-
-        // Keine teure Arbeit im Button-Call.
-        // Die Notification sorgt für die Aktualisierung.
+        _ = RecordingShortcutBridge.markIncident(
+            0,
+            source: "Manual"
+        )
     }
 
     // MARK: - Recording State
 
     private func syncRecordingState(
-        refreshHistoricalStatistics:
-            Bool = false
+        refreshHistoricalStatistics: Bool = false
     ) {
 
         let activeTrip =
@@ -349,8 +433,9 @@ final class MainViewModel: ObservableObject {
 
         if currentlyRecording {
 
-            // Während der Aufnahme darf die Hazard Map
-            // nicht offen bleiben.
+            // Hazard map must never be visible
+            // while recording.
+
             if showHazardMap {
                 showHazardMap = false
             }
@@ -362,24 +447,28 @@ final class MainViewModel: ObservableObject {
             updateStatusText()
 
             updateRouteOverlay(
-                force:
-                    stateChanged
+                force: stateChanged
             )
 
+            if stateChanged {
+
+                refreshRecordingMetrics(
+                    force: true
+                )
+            }
+
             synchronizeWidgetState(
-                reload:
-                    stateChanged
+                reload: stateChanged
             )
 
         } else {
 
-            // Aufnahme beendet.
             stopTimer()
 
             recordingStatusText = nil
             recordingStartedAt = nil
-
             recordingRouteOverlay = nil
+            recordingRouteCoordinates = []
             recordingIncidents = []
 
             lastOverlayPointCount = 0
@@ -392,46 +481,28 @@ final class MainViewModel: ObservableObject {
             lastWidgetRoutePointCount = -1
             lastWidgetSyncDate = nil
 
-            /*
-             WICHTIG:
-
-             Die historischen Widget-Statistiken werden
-             nicht synchron im Start/Stop-Pfad berechnet.
-
-             Stattdessen werden sie nach dem State-Update
-             geplant. Die View kann dadurch zuerst reagieren.
-             */
             synchronizeWidgetState(
                 reload: true
             )
 
+            if previousState {
+                tripToEdit = appDelegate.lastStoppedTrip
+                navigateToTripEdit = tripToEdit != nil
+            }
+
             if refreshHistoricalStatistics {
-                scheduleHistoricalWidgetStatisticsRefresh()
+                reloadWidgetTimeline()
             }
         }
 
-        // Transition erst beenden, wenn der tatsächlich
-        // beobachtete Zustand dem angeforderten Zustand entspricht.
-        if let pendingTarget =
-            pendingRecordingTarget {
+        // Finish the UI transition only once the
+        // actual recording state matches the requested state.
 
-            if pendingTarget ==
-                currentlyRecording {
+        if let pendingTarget = pendingRecordingTarget,
+           pendingTarget == currentlyRecording {
 
-                recordingTransitionInProgress =
-                    false
-
-                pendingRecordingTarget =
-                    nil
-            }
-        }
-
-        if previousState &&
-            !currentlyRecording {
-
-            navigateToTrips = true
-
-            scheduleHistoricalWidgetStatisticsRefresh()
+            recordingTransitionInProgress = false
+            pendingRecordingTarget = nil
         }
 
         lastKnownRecordingState =
@@ -444,12 +515,10 @@ final class MainViewModel: ObservableObject {
 
         timer?.invalidate()
 
-        let timer =
+        let newTimer =
             Timer(
-                timeInterval:
-                    1.0,
-                repeats:
-                    true
+                timeInterval: 1.0,
+                repeats: true
             ) { [weak self] _ in
 
                 Task { @MainActor in
@@ -457,12 +526,11 @@ final class MainViewModel: ObservableObject {
                 }
             }
 
-        self.timer = timer
+        timer = newTimer
 
         RunLoop.main.add(
-            timer,
-            forMode:
-                .common
+            newTimer,
+            forMode: .common
         )
     }
 
@@ -472,31 +540,21 @@ final class MainViewModel: ObservableObject {
             return
         }
 
-        // Jede Sekunde nur die sichtbare Zeit aktualisieren.
         updateStatusText()
 
         let now = Date()
 
-        // Route höchstens ca. alle 2 Sekunden
-        // neu aufbauen.
-        if shouldUpdateRoute(
-            at: now
-        ) {
-            updateRouteOverlay()
+        if shouldUpdateRoute(at: now) {
+            updateRouteOverlay(
+                force: true
+            )
         }
 
-        // Distanz höchstens alle 5 Sekunden
-        // neu berechnen.
-        if shouldUpdateMetrics(
-            at: now
-        ) {
+        if shouldUpdateMetrics(at: now) {
             refreshRecordingMetrics()
         }
 
-        // Widget nur selten aktualisieren.
-        if shouldSyncWidget(
-            at: now
-        ) {
+        if shouldSyncWidget(at: now) {
             synchronizeWidgetState(
                 reload: false
             )
@@ -526,10 +584,7 @@ final class MainViewModel: ObservableObject {
 
     private func updateStatusText() {
 
-        guard
-            let start =
-                recordingStartedAt
-        else {
+        guard let start = recordingStartedAt else {
 
             recordingStatusText = nil
             return
@@ -540,109 +595,81 @@ final class MainViewModel: ObservableObject {
                 0,
                 Int(
                     Date()
-                        .timeIntervalSince(
-                            start
-                        )
+                        .timeIntervalSince(start)
                         .rounded()
                 )
             )
 
         recordingStatusText =
-            String(
-                format:
-                    "%@ · %@",
-                formatElapsedTime(
-                    elapsed
-                ),
-                formatDistance(
-                    cachedDistanceMeters
-                )
-            )
+            "\(formatElapsedTime(elapsed)) · \(formatDistance(cachedDistanceMeters))"
     }
 
-    // MARK: - Metrics Scheduling
-
-    private func shouldUpdateMetrics(
-        at date: Date
-    ) -> Bool {
-
-        guard
-            let last =
-                lastMetricsUpdate
-        else {
-            return true
-        }
-
-        return date.timeIntervalSince(
-            last
-        ) >= 5
-    }
+    // MARK: - Scheduling
 
     private func shouldUpdateRoute(
         at date: Date
     ) -> Bool {
 
-        guard
-            let last =
-                lastRouteUpdateDate
-        else {
+        guard let last = lastRouteUpdateDate else {
             return true
         }
 
-        return date.timeIntervalSince(
-            last
-        ) >= 2
+        return date.timeIntervalSince(last) >= 2.0
+    }
+
+    private func shouldUpdateMetrics(
+        at date: Date
+    ) -> Bool {
+
+        guard let last = lastMetricsUpdate else {
+            return true
+        }
+
+        return date.timeIntervalSince(last) >= 5.0
     }
 
     private func shouldSyncWidget(
         at date: Date
     ) -> Bool {
 
-        guard
-            let last =
-                lastWidgetSyncDate
-        else {
+        guard let last = lastWidgetSyncDate else {
             return true
         }
 
-        return date.timeIntervalSince(
-            last
-        ) >= 15
+        return date.timeIntervalSince(last) >= 15.0
     }
 
     // MARK: - Recording Metrics
 
-    private func refreshRecordingMetrics() {
+    private func refreshRecordingMetrics(
+        force: Bool = false
+    ) {
 
         guard
-            let trip =
-                appDelegate.activeTrip
+            let trip = appDelegate.activeTrip
         else {
+            return
+        }
+
+        guard !isComputingMetrics else {
             return
         }
 
         let pointCount =
             trip.tripLocations.count
 
-        guard
-            !isComputingMetrics
-        else {
-            return
-        }
+        if !force {
 
-        guard
-            pointCount != lastMetricsPointCount ||
-            shouldUpdateMetrics(
-                at: .now
-            )
-        else {
-            return
+            guard
+                pointCount != lastMetricsPointCount ||
+                shouldUpdateMetrics(at: .now)
+            else {
+                return
+            }
         }
 
         isComputingMetrics = true
 
-        // Diese Berechnungen werden bewusst
-        // nicht jede Sekunde ausgeführt.
         let distance =
             max(
                 trip.length(),
@@ -670,12 +697,31 @@ final class MainViewModel: ObservableObject {
         isComputingMetrics = false
 
         updateStatusText()
+    }
 
-        // Widget bekommt den neuesten
-        // zwischengespeicherten Stand.
-        synchronizeWidgetState(
-            reload: false
-        )
+    // MARK: - Incident Cache
+
+    private func refreshIncidentCacheOnly() {
+
+        guard
+            let trip = appDelegate.activeTrip
+        else {
+            return
+        }
+
+        cachedIncidents =
+            max(
+                trip.tripValidAnnotations(),
+                0
+            )
+
+        lastMetricsPointCount =
+            trip.tripLocations.count
+
+        lastMetricsUpdate =
+            .now
+
+        updateStatusText()
     }
 
     // MARK: - Route Overlay
@@ -683,13 +729,11 @@ final class MainViewModel: ObservableObject {
     private func updateRouteOverlay(
         force: Bool = false
     ) {
-
-        guard
-            let trip =
-                appDelegate.activeTrip
+        guard isRecording,
+              let trip = appDelegate.activeTrip
         else {
-
             recordingRouteOverlay = nil
+            recordingRouteCoordinates = []
             recordingIncidents = []
 
             lastOverlayPointCount = 0
@@ -698,74 +742,67 @@ final class MainViewModel: ObservableObject {
             return
         }
 
-        guard
-            let locations =
-                (trip.tripLocations as NSArray)
-                    as? [TripLocation]
-        else {
+        let locations: [TripLocation] =
+            (trip.tripLocations as NSArray)
+                .compactMap { $0 as? TripLocation }
 
-            recordingRouteOverlay = nil
-            recordingIncidents = []
+        let pointCount = locations.count
 
-            lastOverlayPointCount = 0
-            lastRouteUpdateDate = nil
-
+        // Wenn nichts Neues hinzugekommen ist, müssen wir die
+        // teure Polyline-Erzeugung nicht wiederholen.
+        //
+        // Bei force=true wird trotzdem immer neu aufgebaut.
+        if !force,
+           pointCount == lastOverlayPointCount {
             return
         }
 
-        let pointCount =
-            locations.count
+        let coordinates: [CLLocationCoordinate2D] =
+            locations.compactMap { location in
+                let coordinate =
+                    location.location.coordinate
 
-        if !force &&
-            pointCount ==
-                lastOverlayPointCount {
+                guard CLLocationCoordinate2DIsValid(coordinate) else {
+                    return nil
+                }
 
-            lastRouteUpdateDate =
-                .now
-
-            return
-        }
-
-        let coordinates =
-            locations.map {
-                $0.location.coordinate
+                return coordinate
             }
 
-        if coordinates.count >= 2 {
+        recordingRouteCoordinates = coordinates
 
+        if coordinates.count >= 2 {
             recordingRouteOverlay =
                 MKPolyline(
-                    coordinates:
-                        coordinates,
-                    count:
-                        coordinates.count
+                    coordinates: coordinates,
+                    count: coordinates.count
                 )
-
         } else {
-
             recordingRouteOverlay = nil
         }
 
-        recordingIncidents =
-            locations.compactMap {
-                location in
+        // MARK: Incidents
 
-                guard
-                    let annotation =
-                        location.tripAnnotation
+        recordingIncidents =
+            locations.compactMap { location in
+
+                guard let annotation =
+                    location.tripAnnotation
                 else {
                     return nil
                 }
 
                 let coordinate =
-                    location
-                        .location
-                        .coordinate
+                    location.location.coordinate
+
+                guard CLLocationCoordinate2DIsValid(
+                    coordinate
+                ) else {
+                    return nil
+                }
 
                 let timestamp =
-                    location
-                        .location
-                        .timestamp
+                    location.location.timestamp
                         .timeIntervalSince1970
 
                 let identifier =
@@ -778,22 +815,16 @@ final class MainViewModel: ObservableObject {
                     )
 
                 return RecordingIncident(
-                    id:
-                        identifier,
-                    coordinate:
-                        coordinate,
-                    source:
-                        annotation.source
+                    id: identifier,
+                    coordinate: coordinate,
+                    source: annotation.source
                 )
             }
 
-        lastOverlayPointCount =
-            pointCount
-
-        lastRouteUpdateDate =
-            .now
+        lastOverlayPointCount = pointCount
+        lastRouteUpdateDate = .now
     }
-
+    
     // MARK: - Widget Synchronization
 
     private func synchronizeWidgetState(
@@ -816,9 +847,6 @@ final class MainViewModel: ObservableObject {
         let recording =
             activeTrip != nil
 
-        let startDate =
-            activeTrip?.recordingStartDate
-
         defaults.set(
             recording,
             forKey:
@@ -826,23 +854,14 @@ final class MainViewModel: ObservableObject {
         )
 
         if recording,
-           let startDate {
+           let startDate =
+                activeTrip?.recordingStartDate {
 
             defaults.set(
                 startDate.timeIntervalSince1970,
                 forKey:
                     WidgetStateKey.startDate
             )
-
-        } else {
-
-            defaults.removeObject(
-                forKey:
-                    WidgetStateKey.startDate
-            )
-        }
-
-        if recording {
 
             defaults.set(
                 currentElapsedSeconds(),
@@ -870,53 +889,28 @@ final class MainViewModel: ObservableObject {
                     WidgetStateKey.incidents
             )
 
-        } else {
+            let locations = (activeTrip?.tripLocations as NSArray?)?.compactMap {
+                            $0 as? TripLocation
+                        } ?? []
 
-            defaults.set(
-                0,
-                forKey:
-                    WidgetStateKey.elapsedSeconds
-            )
-
-            defaults.set(
-                0,
-                forKey:
-                    WidgetStateKey.distanceMeters
-            )
-
-            defaults.set(
-                0,
-                forKey:
-                    WidgetStateKey.incidents
-            )
-        }
-
-        var routeChanged =
-            false
-
-        if recording,
-           let activeTrip {
-
-            let locations =
-                (activeTrip.tripLocations as NSArray)
-                    .compactMap {
-                        $0 as? TripLocation
-                    }
-
-            let pointCount =
-                locations.count
-
-            if pointCount !=
+            if locations.count !=
                 lastWidgetRoutePointCount {
 
                 let coordinates =
-                    locations.map {
-                        location in
+                    locations.compactMap {
+                        location
+                        -> WidgetCoordinate? in
 
                         let coordinate =
-                            location
-                                .location
-                                .coordinate
+                            location.location.coordinate
+
+                        guard
+                            CLLocationCoordinate2DIsValid(
+                                coordinate
+                            )
+                        else {
+                            return nil
+                        }
 
                         return WidgetCoordinate(
                             latitude:
@@ -926,228 +920,101 @@ final class MainViewModel: ObservableObject {
                         )
                     }
 
+                let widgetCoordinates =
+                    downsampleWidgetCoordinates(
+                        coordinates,
+                        maximumCount: 300
+                    )
+
                 if let data =
                     try? JSONEncoder()
                         .encode(
-                            coordinates
+                            widgetCoordinates
                         ) {
 
                     defaults.set(
                         data,
                         forKey:
-                            WidgetStateKey
-                                .routeCoordinates
+                            WidgetStateKey.routeCoordinates
                     )
                 }
 
                 lastWidgetRoutePointCount =
-                    pointCount
-
-                routeChanged = true
+                    locations.count
             }
 
         } else {
 
             defaults.removeObject(
                 forKey:
-                    WidgetStateKey
-                        .routeCoordinates
+                    WidgetStateKey.startDate
+            )
+
+            defaults.removeObject(
+                forKey:
+                    WidgetStateKey.routeCoordinates
             )
 
             lastWidgetRoutePointCount =
                 -1
-
-            routeChanged = true
         }
 
         lastWidgetSyncDate =
             .now
 
-        // Kein synchronize():
-        // UserDefaults schreibt automatisch.
-        let shouldReload =
-            reload ||
-            (
-                routeChanged &&
-                shouldReloadWidgetTimeline()
-            )
-
-        guard shouldReload else {
+        guard reload else {
             return
         }
 
-        WidgetCenter.shared
-            .reloadTimelines(
-                ofKind:
-                    "SimRaRecordingWidget"
-            )
-
-        lastWidgetTimelineReload =
-            .now
-
-        /*
-         Historische Statistik bewusst NICHT hier
-         synchron berechnen.
-
-         Das ist genau der Code, der früher den
-         Start/Stop-Button blockieren konnte.
-         */
+        reloadWidgetTimeline()
     }
 
-    // MARK: - Historical Widget Statistics
+    // MARK: - Widget Route Downsampling
 
-    private func scheduleHistoricalWidgetStatisticsRefresh() {
-
-        guard
-            !widgetStatisticsRefreshScheduled
-        else {
-            return
-        }
-
-        widgetStatisticsRefreshScheduled =
-            true
-
-        Task { @MainActor [weak self] in
-
-            // Erst UI-State und Navigation rendern lassen.
-            await Task.yield()
-
-            guard
-                let self,
-                !Task.isCancelled
-            else {
-                return
-            }
-
-            self.writeWidgetTripStatistics()
-
-            self.widgetStatisticsRefreshScheduled =
-                false
-
-            self.reloadWidgetTimeline()
-        }
-    }
-
-    private func writeWidgetTripStatistics() {
+    private func downsampleWidgetCoordinates(
+        _ coordinates: [WidgetCoordinate],
+        maximumCount: Int
+    ) -> [WidgetCoordinate] {
 
         guard
-            let defaults =
-                UserDefaults(
-                    suiteName:
-                        WidgetStateKey.suiteName
-                )
+            maximumCount >= 2,
+            coordinates.count > maximumCount
         else {
-            return
+            return coordinates
         }
 
-        let cutoff =
-            Date.now.addingTimeInterval(
-                -35 * 24 * 60 * 60
-            )
+        var result: [WidgetCoordinate] = []
 
-        let activeIdentifier =
-            appDelegate
-                .activeTrip?
-                .identifier
-
-        var statistics:
-            [WidgetTripStatistic] = []
-
-        let identifiers =
-            Trip.allStoredIdentifiers()
-
-        statistics.reserveCapacity(
-            identifiers.count
+        result.reserveCapacity(
+            maximumCount
         )
 
-        for identifier in identifiers {
+        let step =
+            Double(coordinates.count - 1) /
+            Double(maximumCount - 1)
 
-            let tripIdentifier =
-                identifier.intValue
+        for index in 0..<maximumCount {
 
-            if tripIdentifier ==
-                activeIdentifier {
-                continue
-            }
-
-            guard
-                let trip =
-                    Trip(
-                        fromStorage:
-                            tripIdentifier
-                    )
-            else {
-                continue
-            }
-
-            guard
-                let firstLocation =
-                    trip.tripLocations
-                        .firstObject
-                        as? TripLocation
-            else {
-                continue
-            }
-
-            let date =
-                firstLocation
-                    .location
-                    .timestamp
-
-            guard
-                date >= cutoff,
-                date <= .now,
-                trip.tripLocations.count > 1
-            else {
-                continue
-            }
-
-            let distance =
-                max(
-                    trip.length(),
-                    0
-                )
-
-            guard
-                distance > 0
-            else {
-                continue
-            }
-
-            statistics.append(
-                WidgetTripStatistic(
-                    date:
-                        date,
-                    distanceMeters:
-                        Double(
-                            distance
+            let sourceIndex =
+                min(
+                    coordinates.count - 1,
+                    Int(
+                        (
+                            Double(index) * step
                         )
+                        .rounded()
+                    )
                 )
+
+            result.append(
+                coordinates[sourceIndex]
             )
         }
 
-        statistics.sort {
-            $0.date <
-                $1.date
-        }
-
-        guard
-            let data =
-                try? JSONEncoder()
-                    .encode(
-                        statistics
-                    )
-        else {
-            return
-        }
-
-        defaults.set(
-            data,
-            forKey:
-                WidgetStateKey
-                    .tripStatistics
-        )
+        return result
     }
+
+    // MARK: - Widget
 
     private func reloadWidgetTimeline() {
 
@@ -1161,30 +1028,12 @@ final class MainViewModel: ObservableObject {
             .now
     }
 
-    // MARK: - Widget Helpers
+    // MARK: - Time
 
-    private func shouldReloadWidgetTimeline()
-        -> Bool {
-
-        guard
-            let last =
-                lastWidgetTimelineReload
-        else {
-            return true
-        }
-
-        return Date()
-            .timeIntervalSince(
-                last
-            ) >= 15
-    }
-
-    private func currentElapsedSeconds()
-        -> Int {
+    private func currentElapsedSeconds() -> Int {
 
         guard
-            let start =
-                recordingStartedAt
+            let start = recordingStartedAt
         else {
             return 0
         }
@@ -1193,9 +1042,7 @@ final class MainViewModel: ObservableObject {
             0,
             Int(
                 Date()
-                    .timeIntervalSince(
-                        start
-                    )
+                    .timeIntervalSince(start)
                     .rounded()
             )
         )
@@ -1217,10 +1064,7 @@ final class MainViewModel: ObservableObject {
             safe / 3_600
 
         let minutes =
-            (
-                safe %
-                3_600
-            ) / 60
+            (safe % 3_600) / 60
 
         let remaining =
             safe % 60
@@ -1259,8 +1103,7 @@ final class MainViewModel: ObservableObject {
             return String(
                 format:
                     "%.1f km",
-                Double(safe) /
-                    1_000.0
+                Double(safe) / 1_000.0
             )
         }
 
@@ -1284,17 +1127,14 @@ final class MainViewModel: ObservableObject {
 
     func openOBSConfig() {
 
-        showOBSConfig =
-            true
+        showOBSConfig = true
     }
 
     // MARK: - Hazard Map
 
     func toggleHazardMap() {
 
-        guard
-            !isRecording
-        else {
+        guard !isRecording else {
             return
         }
 
@@ -1303,8 +1143,7 @@ final class MainViewModel: ObservableObject {
 
     func closeHazardMap() {
 
-        showHazardMap =
-            false
+        showHazardMap = false
     }
 
     // MARK: - Initial Messages
@@ -1316,8 +1155,7 @@ final class MainViewModel: ObservableObject {
                 "initialMessage"
         ) {
 
-            showHowToAlert =
-                true
+            showHowToAlert = true
         }
     }
 

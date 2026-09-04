@@ -37,14 +37,13 @@ private enum SimRaWidgetConfiguration {
         "widgetTripStatistics"
 
     static let startURL =
-        URL(
-            string: "simra://recording/start"
-        )
+        URL(string: "simra://recording/start")
 
     static let stopURL =
-        URL(
-            string: "simra://recording/stop"
-        )
+        URL(string: "simra://recording/stop")
+
+    static let dangerURL =
+        URL(string: "simra://recording/danger")
 }
 
 // MARK: - Timeline Entry
@@ -52,19 +51,12 @@ private enum SimRaWidgetConfiguration {
 struct SimRaRecordingEntry: TimelineEntry {
 
     let date: Date
-
     let routeCoordinatesData: Data?
-
     let recording: Bool
-
     let distanceMeters: Double
-
     let recordingStartDate: Date?
-
     let incidentsCount: Int
-
     let weeklyKilometers: [Double]
-
     let weeklyRideCounts: [Int]
 
     init(
@@ -74,51 +66,38 @@ struct SimRaRecordingEntry: TimelineEntry {
         distanceMeters: Double = 0,
         recordingStartDate: Date? = nil,
         incidentsCount: Int = 0,
-        weeklyKilometers: [Double] = [
-            0,
-            0,
-            0,
-            0
-        ],
-        weeklyRideCounts: [Int] = [
-            0,
-            0,
-            0,
-            0
-        ]
+        weeklyKilometers: [Double] = [0, 0, 0, 0],
+        weeklyRideCounts: [Int] = [0, 0, 0, 0]
     ) {
         self.date = date
-        self.routeCoordinatesData =
-            routeCoordinatesData
+        self.routeCoordinatesData = routeCoordinatesData
         self.recording = recording
-        self.distanceMeters =
-            max(
-                distanceMeters,
-                0
-            )
-        self.recordingStartDate =
-            recordingStartDate
-        self.incidentsCount =
-            max(
-                incidentsCount,
-                0
-            )
-        self.weeklyKilometers =
-            weeklyKilometers
-        self.weeklyRideCounts =
-            weeklyRideCounts
+        self.distanceMeters = max(
+            distanceMeters,
+            0
+        )
+        self.recordingStartDate = recordingStartDate
+        self.incidentsCount = max(
+            incidentsCount,
+            0
+        )
+        self.weeklyKilometers = weeklyKilometers
+        self.weeklyRideCounts = weeklyRideCounts
     }
 }
 
 // MARK: - Coordinate
 
-struct SimRaWidgetCoordinate: Codable, Equatable {
+struct SimRaWidgetCoordinate:
+    Codable,
+    Equatable {
 
     let latitude: Double
     let longitude: Double
 
     var location:
         CLLocationCoordinate2D {
+
         CLLocationCoordinate2D(
             latitude: latitude,
             longitude: longitude
@@ -140,21 +119,19 @@ private struct SimRaStoredTripStatistic:
 struct SimRaRecordingProvider:
     TimelineProvider {
 
-    // MARK: Placeholder
-
     func placeholder(
         in context: Context
     ) -> SimRaRecordingEntry {
 
         SimRaRecordingEntry(
+            routeCoordinatesData: nil,
             recording: true,
             distanceMeters: 6_800,
             recordingStartDate:
                 Date(
-                    timeIntervalSinceNow:
-                        -642
+                    timeIntervalSinceNow: -642
                 ),
-            incidentsCount: 2,
+            incidentsCount: 1,
             weeklyKilometers: [
                 7.4,
                 15.8,
@@ -170,8 +147,6 @@ struct SimRaRecordingProvider:
         )
     }
 
-    // MARK: Snapshot
-
     func getSnapshot(
         in context: Context,
         completion:
@@ -179,13 +154,10 @@ struct SimRaRecordingProvider:
                 SimRaRecordingEntry
             ) -> Void
     ) {
-
         completion(
             currentEntry()
         )
     }
-
-    // MARK: Timeline
 
     func getTimeline(
         in context: Context,
@@ -195,19 +167,12 @@ struct SimRaRecordingProvider:
             ) -> Void
     ) {
 
-        let entry =
-            currentEntry()
+        let entry = currentEntry()
 
-        let refreshInterval:
-            TimeInterval
-
-        if entry.recording {
-            refreshInterval =
-                60
-        } else {
-            refreshInterval =
-                15 * 60
-        }
+        let refreshInterval =
+            entry.recording
+            ? 5.0 * 60.0
+            : 15.0 * 60.0
 
         let nextRefresh =
             Date.now.addingTimeInterval(
@@ -216,18 +181,11 @@ struct SimRaRecordingProvider:
 
         completion(
             Timeline(
-                entries: [
-                    entry
-                ],
-                policy:
-                    .after(
-                        nextRefresh
-                    )
+                entries: [entry],
+                policy: .after(nextRefresh)
             )
         )
     }
-
-    // MARK: Current Entry
 
     private func currentEntry()
         -> SimRaRecordingEntry {
@@ -237,7 +195,7 @@ struct SimRaRecordingProvider:
                 UserDefaults(
                     suiteName:
                         SimRaWidgetConfiguration
-                            .appGroupIdentifier
+                        .appGroupIdentifier
                 )
         else {
             return SimRaRecordingEntry()
@@ -247,35 +205,31 @@ struct SimRaRecordingProvider:
             defaults.bool(
                 forKey:
                     SimRaWidgetConfiguration
-                        .recordingKey
+                    .recordingKey
             )
 
         let startTimestamp =
             defaults.double(
                 forKey:
                     SimRaWidgetConfiguration
-                        .startDateKey
+                    .startDateKey
             )
 
         let startDate:
-            Date?
-
-        if startTimestamp > 0 {
-            startDate =
-                Date(
+            Date? =
+                startTimestamp > 0
+                ? Date(
                     timeIntervalSince1970:
                         startTimestamp
                 )
-        } else {
-            startDate = nil
-        }
+                : nil
 
         let distance =
             max(
                 defaults.double(
                     forKey:
                         SimRaWidgetConfiguration
-                            .distanceKey
+                        .distanceKey
                 ),
                 0
             )
@@ -285,7 +239,7 @@ struct SimRaRecordingProvider:
                 defaults.integer(
                     forKey:
                         SimRaWidgetConfiguration
-                            .incidentsKey
+                        .incidentsKey
                 ),
                 0
             )
@@ -294,26 +248,42 @@ struct SimRaRecordingProvider:
             defaults.data(
                 forKey:
                     SimRaWidgetConfiguration
-                        .routeCoordinatesKey
+                    .routeCoordinatesKey
             )
 
-        let statisticsData =
-            defaults.data(
-                forKey:
-                    SimRaWidgetConfiguration
+        let weekly:
+            (
+                kilometers: [Double],
+                rides: [Int]
+            )
+
+        if recording {
+
+            weekly = (
+                [0, 0, 0, 0],
+                [0, 0, 0, 0]
+            )
+
+        } else {
+
+            let statisticsData =
+                defaults.data(
+                    forKey:
+                        SimRaWidgetConfiguration
                         .tripStatisticsKey
-            )
+                )
 
-        let statistics =
-            readStatistics(
-                from:
-                    statisticsData
-            )
+            let statistics =
+                readStatistics(
+                    from:
+                        statisticsData
+                )
 
-        let weekly =
-            calculateWeeklyStatistics(
-                statistics
-            )
+            weekly =
+                calculateWeeklyStatistics(
+                    statistics
+                )
+        }
 
         return SimRaRecordingEntry(
             date: .now,
@@ -325,8 +295,8 @@ struct SimRaRecordingProvider:
                 distance,
             recordingStartDate:
                 recording
-                    ? startDate
-                    : nil,
+                ? startDate
+                : nil,
             incidentsCount:
                 incidents,
             weeklyKilometers:
@@ -335,39 +305,6 @@ struct SimRaRecordingProvider:
                 weekly.rides
         )
     }
-
-    // MARK: Coordinates
-
-    private func decodeCoordinates(
-        from data: Data?
-    ) -> [
-        CLLocationCoordinate2D
-    ] {
-
-        guard
-            let data,
-            let values =
-                try? JSONDecoder().decode(
-                    [
-                        SimRaWidgetCoordinate
-                    ].self,
-                    from:
-                        data
-                )
-        else {
-            return []
-        }
-
-        return values
-            .map(\.location)
-            .filter {
-                CLLocationCoordinate2DIsValid(
-                    $0
-                )
-            }
-    }
-
-    // MARK: Statistics
 
     private func readStatistics(
         from data: Data?
@@ -378,13 +315,14 @@ struct SimRaRecordingProvider:
         guard
             let data,
             let values =
-                try? JSONDecoder().decode(
-                    [
-                        SimRaStoredTripStatistic
-                    ].self,
-                    from:
-                        data
-                )
+                try? JSONDecoder()
+                    .decode(
+                        [
+                            SimRaStoredTripStatistic
+                        ].self,
+                        from:
+                            data
+                    )
         else {
             return []
         }
@@ -411,36 +349,16 @@ struct SimRaRecordingProvider:
                 )
         else {
             return (
-                [
-                    0,
-                    0,
-                    0,
-                    0
-                ],
-                [
-                    0,
-                    0,
-                    0,
-                    0
-                ]
+                [0, 0, 0, 0],
+                [0, 0, 0, 0]
             )
         }
 
         var kilometers =
-            [
-                0.0,
-                0.0,
-                0.0,
-                0.0
-            ]
+            [0.0, 0.0, 0.0, 0.0]
 
         var rides =
-            [
-                0,
-                0,
-                0,
-                0
-            ]
+            [0, 0, 0, 0]
 
         for statistic in statistics {
 
@@ -452,12 +370,7 @@ struct SimRaRecordingProvider:
                             currentWeek.start,
                         to:
                             statistic.date
-                    ).weekOfYear
-            else {
-                continue
-            }
-
-            guard
+                    ).weekOfYear,
                 (-3...0).contains(
                     weekDifference
                 )
@@ -469,9 +382,7 @@ struct SimRaRecordingProvider:
                 weekDifference + 3
 
             guard
-                (0..<4).contains(
-                    index
-                )
+                (0..<4).contains(index)
             else {
                 continue
             }
@@ -504,8 +415,7 @@ struct SimRaRecordingWidget:
         some WidgetConfiguration {
 
         StaticConfiguration(
-            kind:
-                Self.kind,
+            kind: Self.kind,
             provider:
                 SimRaRecordingProvider()
         ) { entry in
@@ -519,49 +429,58 @@ struct SimRaRecordingWidget:
             "SimRa"
         )
         .description(
-            "Aufnahme und Fahrtenstatistik."
+            "Aktuelle Aufzeichnung und Fahrtenstatistik."
         )
         .supportedFamilies([
             .systemSmall,
             .systemMedium,
             .systemLarge,
-            .systemExtraLarge
+            .systemExtraLarge,
+            .accessoryCircular,
+            .accessoryRectangular,
+            .accessoryInline
         ])
-        .contentMarginsDisabled()
     }
 }
 
-// MARK: - Root View
+// MARK: - Root
 
-private struct SimRaRecordingWidgetView: View {
+private struct SimRaRecordingWidgetView:
+    View {
 
-    let entry: SimRaRecordingEntry
+    let entry:
+        SimRaRecordingEntry
 
     @Environment(\.widgetFamily)
     private var family
 
     var body: some View {
+
         Group {
+
             if entry.recording {
+
                 RecordingWidgetView(
-                    entry: entry,
-                    family: family
+                    entry:
+                        entry,
+                    family:
+                        family
                 )
+
             } else {
+
                 StatisticsWidgetView(
-                    entry: entry,
-                    family: family
+                    entry:
+                        entry,
+                    family:
+                        family
                 )
             }
         }
         .containerBackground(
             for: .widget
         ) {
-            if entry.recording {
-                Color.black
-            } else {
-                Color(.systemBackground)
-            }
+            Color.clear
         }
     }
 }
@@ -599,18 +518,35 @@ private struct RecordingWidgetView:
 
             LargeRecordingView(
                 entry:
-                    entry,
-                family:
-                    family
+                    entry
             )
 
         case .systemExtraLarge:
 
-            LargeRecordingView(
+            ExtraLargeRecordingView(
                 entry:
-                    entry,
-                family:
-                    family
+                    entry
+            )
+
+        case .accessoryCircular:
+
+            CircularRecordingView(
+                entry:
+                    entry
+            )
+
+        case .accessoryRectangular:
+
+            RectangularRecordingView(
+                entry:
+                    entry
+            )
+
+        case .accessoryInline:
+
+            InlineRecordingView(
+                entry:
+                    entry
             )
 
         @unknown default:
@@ -633,101 +569,112 @@ private struct SmallRecordingView:
 
     var body: some View {
 
-        ZStack(
-            alignment:
-                .bottom
-        ) {
+        ZStack {
 
-            RecordingRouteView(
+            RecordingRouteBackground(
                 routeData:
-                    entry.routeCoordinatesData
+                    entry.routeCoordinatesData,
+                accent:
+                    Color.blue
             )
-
-            LinearGradient(
-                colors: [
-                    .clear,
-                    .black.opacity(
-                        0.86
-                    )
-                ],
-                startPoint:
-                    .center,
-                endPoint:
-                    .bottom
-            )
+            .opacity(0.48)
 
             VStack(
-                alignment:
-                    .leading,
-                spacing:
-                    0
+                alignment: .leading,
+                spacing: 0
             ) {
 
-                SmallRecordingHeader()
+                HStack(spacing: 6) {
+
+                    RecordingIndicator()
+
+                    Text("SimRa")
+                        .font(
+                            .caption.weight(
+                                .bold
+                            )
+                        )
+
+                    Text("Aufnahme")
+                        .font(
+                            .caption2.weight(
+                                .medium
+                            )
+                        )
+                        .foregroundStyle(
+                            .secondary
+                        )
+
+                    Spacer(
+                        minLength: 4
+                    )
+
+                    if entry.incidentsCount > 0 {
+
+                        IncidentBadge(
+                            count:
+                                entry.incidentsCount
+                        )
+                    }
+                }
 
                 Spacer(
-                    minLength:
-                        6
+                    minLength: 0
                 )
 
                 HStack(
                     alignment:
-                        .bottom,
-                    spacing:
-                        8
+                        .lastTextBaseline,
+                    spacing: 8
                 ) {
 
-                    VStack(
-                        alignment:
-                            .leading,
-                        spacing:
-                            2
-                    ) {
-
-                        RecordingDuration(
-                            startDate:
-                                entry.recordingStartDate,
-                            currentDate:
-                                entry.date,
-                            fontSize:
-                                24
-                        )
-
-                        Text(
-                            formatDistance(
-                                entry.distanceMeters
-                            )
-                        )
-                        .font(
-                            .caption.weight(
-                                .semibold
-                            )
-                        )
-                        .monospacedDigit()
-                        .foregroundStyle(
-                            .white
-                        )
-                        .lineLimit(
-                            1
-                        )
-                    }
+                    RecordingDuration(
+                        startDate:
+                            entry.recordingStartDate,
+                        size:
+                            25
+                    )
 
                     Spacer(
-                        minLength:
-                            0
+                        minLength: 0
+                    )
+
+                    Text(
+                        formatDistance(
+                            entry.distanceMeters
+                        )
+                    )
+                    .font(
+                        .caption.weight(
+                            .semibold
+                        )
+                    )
+                    .monospacedDigit()
+                    .foregroundStyle(
+                        .secondary
+                    )
+                }
+
+                Spacer(
+                    minLength: 8
+                )
+
+                HStack(spacing: 8) {
+
+                    DangerButton(
+                        diameter:
+                            36
                     )
 
                     StopButton(
-                        size:
-                            42
+                        diameter:
+                            36
                     )
+
+                    Spacer()
                 }
             }
-            .padding(
-                11
-            )
         }
-        .clipped()
     }
 }
 
@@ -741,112 +688,107 @@ private struct MediumRecordingView:
 
     var body: some View {
 
-        ZStack(
-            alignment:
-                .bottom
-        ) {
+        ZStack {
 
-            RecordingRouteView(
+            RecordingRouteBackground(
                 routeData:
-                    entry.routeCoordinatesData
+                    entry.routeCoordinatesData,
+                accent:
+                    Color.blue
             )
+            .opacity(0.40)
 
-            LinearGradient(
-                colors: [
-                    .clear,
-                    .black.opacity(
-                        0.88
-                    )
-                ],
-                startPoint:
-                    .center,
-                endPoint:
-                    .bottom
-            )
-
-            VStack(
-                alignment:
-                    .leading,
-                spacing:
-                    8
+            HStack(
+                alignment: .top,
+                spacing: 12
             ) {
 
-                RecordingHeader()
-
-                Spacer(
-                    minLength:
-                        0
-                )
-
-                HStack(
+                VStack(
                     alignment:
-                        .bottom,
-                    spacing:
-                        12
+                        .leading,
+                    spacing: 0
                 ) {
 
-                    VStack(
+                    HStack(spacing: 6) {
+
+                        RecordingIndicator()
+
+                        Text("SimRa")
+                            .font(
+                                .subheadline.weight(
+                                    .bold
+                                )
+                            )
+
+                        Text("Aufnahme")
+                            .font(
+                                .caption
+                            )
+                            .foregroundStyle(
+                                .secondary
+                            )
+
+                        if entry.incidentsCount > 0 {
+
+                            IncidentBadge(
+                                count:
+                                    entry.incidentsCount
+                            )
+                        }
+                    }
+
+                    Spacer(
+                        minLength: 0
+                    )
+
+                    HStack(
                         alignment:
-                            .leading,
-                        spacing:
-                            3
+                            .lastTextBaseline,
+                        spacing: 10
                     ) {
 
                         RecordingDuration(
                             startDate:
                                 entry.recordingStartDate,
-                            currentDate:
-                                entry.date,
-                            fontSize:
-                                32
+                            size:
+                                31
                         )
 
-                        HStack(
-                            spacing:
-                                8
-                        ) {
-
-                            Text(
-                                formatDistance(
-                                    entry.distanceMeters
-                                )
+                        Text(
+                            formatDistance(
+                                entry.distanceMeters
                             )
-                            .font(
-                                .subheadline.weight(
-                                    .semibold
-                                )
+                        )
+                        .font(
+                            .subheadline.weight(
+                                .semibold
                             )
-                            .monospacedDigit()
-
-                            if entry.incidentsCount > 0 {
-
-                                IncidentIndicator(
-                                    count:
-                                        entry.incidentsCount
-                                )
-                            }
-                        }
+                        )
+                        .monospacedDigit()
                         .foregroundStyle(
-                            .white
+                            .secondary
                         )
                     }
+                }
 
-                    Spacer(
-                        minLength:
-                            0
+                Spacer(
+                    minLength: 0
+                )
+
+                HStack(spacing: 8) {
+
+                    DangerButton(
+                        diameter:
+                            44
                     )
 
                     StopButton(
-                        size:
-                            50
+                        diameter:
+                            44
                     )
                 }
             }
-            .padding(
-                14
-            )
         }
-        .clipped()
     }
 }
 
@@ -858,224 +800,594 @@ private struct LargeRecordingView:
     let entry:
         SimRaRecordingEntry
 
-    let family:
-        WidgetFamily
-
     var body: some View {
 
-        ZStack(
-            alignment:
-                .bottom
-        ) {
+        ZStack {
 
-            RecordingRouteView(
+            RecordingRouteBackground(
                 routeData:
-                    entry.routeCoordinatesData
+                    entry.routeCoordinatesData,
+                accent:
+                    Color.blue
             )
-
-            LinearGradient(
-                colors: [
-                    .clear,
-                    .black.opacity(
-                        0.90
-                    )
-                ],
-                startPoint:
-                    .top,
-                endPoint:
-                    .bottom
-            )
+            .opacity(0.42)
 
             VStack(
-                alignment:
-                    .leading,
-                spacing:
-                    10
+                alignment: .leading,
+                spacing: 0
             ) {
 
-                RecordingHeader()
+                RecordingTopBar(
+                    entry:
+                        entry
+                )
 
                 Spacer(
-                    minLength:
-                        0
-                )
-
-                Text(
-                    "AKTIVE AUFNAHME"
-                )
-                .font(
-                    .caption.weight(
-                        .semibold
-                    )
-                )
-                .foregroundStyle(
-                    .white.opacity(
-                        0.75
-                    )
-                )
-
-                RecordingDuration(
-                    startDate:
-                        entry.recordingStartDate,
-                    currentDate:
-                        entry.date,
-                    fontSize:
-                        family ==
-                        .systemExtraLarge
-                        ? 48
-                        : 41
+                    minLength: 0
                 )
 
                 HStack(
-                    spacing:
-                        8
+                    alignment:
+                        .bottom,
+                    spacing: 20
                 ) {
 
-                    RecordingMetric(
-                        title:
-                            "Strecke",
-                        value:
-                            formatDistance(
-                                entry.distanceMeters
-                            ),
-                        icon:
-                            "bicycle"
+                    VStack(
+                        alignment:
+                            .leading,
+                        spacing: 3
+                    ) {
+
+                        Text(
+                            "Aufnahmezeit"
+                        )
+                        .font(
+                            .caption
+                        )
+                        .foregroundStyle(
+                            .secondary
+                        )
+
+                        RecordingDuration(
+                            startDate:
+                                entry.recordingStartDate,
+                            size:
+                                40
+                        )
+                    }
+
+                    Spacer(
+                        minLength: 0
                     )
 
-                    if entry.incidentsCount > 0 {
+                    VStack(
+                        alignment:
+                            .trailing,
+                        spacing: 3
+                    ) {
 
-                        RecordingMetric(
-                            title:
-                                "Meldungen",
-                            value:
-                                String(
-                                    entry.incidentsCount
-                                ),
-                            icon:
-                                "exclamationmark.triangle.fill"
+                        Text("Strecke")
+                            .font(
+                                .caption
+                            )
+                            .foregroundStyle(
+                                .secondary
+                            )
+
+                        Text(
+                            formatDistance(
+                                entry.distanceMeters
+                            )
                         )
+                        .font(
+                            .system(
+                                size: 31,
+                                weight: .bold,
+                                design: .rounded
+                            )
+                        )
+                        .monospacedDigit()
                     }
                 }
 
-                HStack {
+                Spacer(
+                    minLength: 14
+                )
 
-                    Spacer(
-                        minLength:
-                            0
+                HStack(
+                    spacing: 10
+                ) {
+
+                    DangerButton(
+                        diameter:
+                            50
                     )
 
                     StopButton(
-                        size:
-                            56
+                        diameter:
+                            50
                     )
+
+                    Spacer()
                 }
             }
-            .padding(
-                family ==
-                    .systemExtraLarge
-                ? 20
-                : 16
-            )
         }
-        .clipped()
     }
 }
 
-// MARK: - Real Route
+// MARK: - Extra Large Recording
 
-private struct RecordingRouteView:
+private struct ExtraLargeRecordingView:
     View {
 
-    let routeData:
-        Data?
+    let entry:
+        SimRaRecordingEntry
 
     var body: some View {
 
-        GeometryReader { geometry in
+        ZStack {
 
-            ZStack {
+            RecordingRouteBackground(
+                routeData:
+                    entry.routeCoordinatesData,
+                accent:
+                    Color.blue
+            )
+            .opacity(0.36)
 
-                Color(
-                    white:
-                        0.06
+            VStack(
+                alignment: .leading,
+                spacing: 0
+            ) {
+
+                RecordingTopBar(
+                    entry:
+                        entry
                 )
 
-                if let coordinates =
-                    decodedCoordinates,
-                   coordinates.count >= 2 {
+                Spacer(
+                    minLength: 0
+                )
 
-                    RouteDrawingView(
-                        coordinates:
-                            coordinates,
-                        size:
-                            geometry.size
-                    )
+                HStack(
+                    alignment:
+                        .bottom,
+                    spacing: 36
+                ) {
 
-                } else if decodedCoordinates?.count == 1 {
+                    VStack(
+                        alignment:
+                            .leading,
+                        spacing: 4
+                    ) {
 
-                    Circle()
-                        .fill(
-                            Color.blue
+                        Text(
+                            "Aufnahmezeit"
                         )
-                        .frame(
-                            width:
-                                12,
-                            height:
-                                12
+                        .font(
+                            .subheadline
+                        )
+                        .foregroundStyle(
+                            .secondary
                         )
 
-                } else {
-
-                    Image(
-                        systemName:
-                            "bicycle"
-                    )
-                    .font(
-                        .system(
+                        RecordingDuration(
+                            startDate:
+                                entry.recordingStartDate,
                             size:
-                                30,
-                            weight:
-                                .medium
+                                48
                         )
-                    )
-                    .foregroundStyle(
-                        .white.opacity(
-                            0.20
+                    }
+
+                    VStack(
+                        alignment:
+                            .leading,
+                        spacing: 4
+                    ) {
+
+                        Text("Strecke")
+                            .font(
+                                .subheadline
+                            )
+                            .foregroundStyle(
+                                .secondary
+                            )
+
+                        Text(
+                            formatDistance(
+                                entry.distanceMeters
+                            )
                         )
+                        .font(
+                            .system(
+                                size: 40,
+                                weight: .bold,
+                                design: .rounded
+                            )
+                        )
+                        .monospacedDigit()
+                    }
+
+                    if entry.incidentsCount > 0 {
+
+                        VStack(
+                            alignment:
+                                .leading,
+                            spacing: 4
+                        ) {
+
+                            Text("Gefahren")
+                                .font(
+                                    .subheadline
+                                )
+                                .foregroundStyle(
+                                    .secondary
+                                )
+
+                            Text(
+                                "\(entry.incidentsCount)"
+                            )
+                            .font(
+                                .system(
+                                    size: 40,
+                                    weight: .bold,
+                                    design: .rounded
+                                )
+                            )
+                            .monospacedDigit()
+                        }
+                    }
+
+                    Spacer(
+                        minLength: 0
                     )
                 }
+
+                Spacer(
+                    minLength: 18
+                )
+
+                HStack(
+                    spacing: 12
+                ) {
+
+                    DangerButton(
+                        diameter:
+                            56
+                    )
+
+                    StopButton(
+                        diameter:
+                            56
+                    )
+
+                    Spacer()
+                }
             }
-            .frame(
-                width:
-                    geometry.size.width,
-                height:
-                    geometry.size.height
-            )
         }
-        .clipped()
-        .allowsHitTesting(
-            false
+    }
+}
+
+// MARK: - Recording Top Bar
+
+private struct RecordingTopBar:
+    View {
+
+    let entry:
+        SimRaRecordingEntry
+
+    var body: some View {
+
+        HStack(spacing: 7) {
+
+            RecordingIndicator()
+
+            Text("SimRa")
+                .font(
+                    .headline.weight(
+                        .bold
+                    )
+                )
+
+            Text("Aufnahme")
+                .font(
+                    .subheadline.weight(
+                        .medium
+                    )
+                )
+                .foregroundStyle(
+                    .secondary
+                )
+
+            Spacer(
+                minLength: 4
+            )
+
+            if entry.incidentsCount > 0 {
+
+                IncidentBadge(
+                    count:
+                        entry.incidentsCount
+                )
+            }
+        }
+    }
+}
+
+// MARK: - Recording Indicator
+
+private struct RecordingIndicator:
+    View {
+
+    var body: some View {
+
+        Circle()
+            .fill(.red)
+            .frame(
+                width: 8,
+                height: 8
+            )
+            .accessibilityHidden(
+                true
+            )
+    }
+}
+
+// MARK: - Incident Badge
+
+private struct IncidentBadge:
+    View {
+
+    let count: Int
+
+    var body: some View {
+
+        HStack(spacing: 4) {
+
+            Image(
+                systemName:
+                    "exclamationmark.triangle.fill"
+            )
+            .font(
+                .caption2.weight(
+                    .semibold
+                )
+            )
+
+            Text(
+                "\(count)"
+            )
+            .font(
+                .caption2.weight(
+                    .bold
+                )
+            )
+            .monospacedDigit()
+        }
+        .foregroundStyle(
+            .orange
+        )
+        .accessibilityElement(
+            children: .combine
+        )
+        .accessibilityLabel(
+            "\(count) gemeldete Gefahren"
         )
     }
+}
 
-    private var decodedCoordinates:
-        [CLLocationCoordinate2D]? {
+// MARK: - Duration
+
+private struct RecordingDuration: View {
+
+    let startDate: Date?
+    let size: CGFloat
+
+    private var endDate: Date {
+        Date.distantFuture
+    }
+
+    var body: some View {
+        Group {
+            if let startDate {
+                Text(
+                    timerInterval: startDate...endDate,
+                    pauseTime: nil,
+                    countsDown: false
+                )
+            } else {
+                Text("00:00")
+            }
+        }
+        .font(
+            .system(
+                size: size,
+                weight: .bold,
+                design: .rounded
+            )
+        )
+        .monospacedDigit()
+        .lineLimit(1)
+        .minimumScaleFactor(0.65)
+        .contentTransition(.numericText())
+    }
+}
+
+// MARK: - Danger Button
+
+private struct DangerButton:
+    View {
+
+    let diameter: CGFloat
+
+    var body: some View {
+
+        if let url =
+            SimRaWidgetConfiguration
+                .dangerURL {
+
+            Link(
+                destination:
+                    url
+            ) {
+                content
+            }
+            .accessibilityLabel(
+                "Gefahr melden"
+            )
+            .accessibilityHint(
+                "Öffnet SimRa zum Melden einer Gefahr"
+            )
+
+        } else {
+
+            content
+        }
+    }
+
+    private var content: some View {
+
+        Image(
+            systemName:
+                "exclamationmark.triangle.fill"
+        )
+        .font(
+            .system(
+                size:
+                    diameter * 0.33,
+                weight: .bold
+            )
+        )
+        .foregroundStyle(
+            .orange
+        )
+        .frame(
+            width:
+                diameter,
+            height:
+                diameter
+        )
+        .background(
+            .orange.opacity(0.15),
+            in:
+                Circle()
+        )
+        .overlay {
+
+            Circle()
+                .stroke(
+                    .orange.opacity(0.30),
+                    lineWidth:
+                        1
+                )
+        }
+        .contentShape(
+            Circle()
+        )
+    }
+}
+
+// MARK: - Stop Button
+
+private struct StopButton:
+    View {
+
+    let diameter: CGFloat
+
+    var body: some View {
+
+        if let url =
+            SimRaWidgetConfiguration
+                .stopURL {
+
+            Link(
+                destination:
+                    url
+            ) {
+                content
+            }
+            .accessibilityLabel(
+                "Aufnahme stoppen"
+            )
+            .accessibilityHint(
+                "Beendet die aktuelle Aufnahme"
+            )
+
+        } else {
+
+            content
+        }
+    }
+
+    private var content: some View {
+
+        Image(
+            systemName:
+                "stop.fill"
+        )
+        .font(
+            .system(
+                size:
+                    diameter * 0.29,
+                weight: .bold
+            )
+        )
+        .foregroundStyle(
+            .red
+        )
+        .frame(
+            width:
+                diameter,
+            height:
+                diameter
+        )
+        .background(
+            .red.opacity(0.14),
+            in:
+                Circle()
+        )
+        .overlay {
+
+            Circle()
+                .stroke(
+                    .red.opacity(0.30),
+                    lineWidth:
+                        1
+                )
+        }
+        .contentShape(
+            Circle()
+        )
+    }
+}
+
+// MARK: - Route Background
+
+private struct RecordingRouteBackground:
+    View {
+
+    let routeData: Data?
+    let accent: Color
+
+    private var coordinates:
+        [CLLocationCoordinate2D] {
 
         guard
             let routeData,
             let values =
-                try? JSONDecoder().decode(
-                    [
-                        SimRaWidgetCoordinate
-                    ].self,
-                    from:
-                        routeData
-                )
+                try? JSONDecoder()
+                    .decode(
+                        [
+                            SimRaWidgetCoordinate
+                        ].self,
+                        from:
+                            routeData
+                    )
         else {
-            return nil
+            return []
         }
 
-        let coordinates =
+        let validCoordinates =
             values
                 .map(\.location)
                 .filter {
@@ -1084,9 +1396,142 @@ private struct RecordingRouteView:
                     )
                 }
 
-        return coordinates.isEmpty
-            ? nil
-            : coordinates
+        return simplifiedCoordinates(
+            validCoordinates
+        )
+    }
+
+    var body: some View {
+
+        GeometryReader { geometry in
+
+            if coordinates.count >= 2 {
+
+                RouteDrawingView(
+                    coordinates:
+                        coordinates,
+                    size:
+                        geometry.size,
+                    accent:
+                        accent
+                )
+
+            } else if coordinates.count == 1 {
+
+                RouteSinglePointView(
+                    accent:
+                        accent
+                )
+            }
+        }
+        .frame(
+            maxWidth: .infinity,
+            maxHeight: .infinity
+        )
+        .allowsHitTesting(
+            false
+        )
+        .clipped()
+    }
+
+    private func simplifiedCoordinates(
+        _ coordinates:
+            [CLLocationCoordinate2D]
+    ) -> [
+        CLLocationCoordinate2D
+    ] {
+
+        guard
+            coordinates.count > 100
+        else {
+            return coordinates
+        }
+
+        let targetCount = 100
+
+        let step =
+            Double(
+                coordinates.count - 1
+            )
+            /
+            Double(
+                targetCount - 1
+            )
+
+        var result:
+            [CLLocationCoordinate2D] = []
+
+        result.reserveCapacity(
+            targetCount
+        )
+
+        for index in 0..<targetCount {
+
+            let sourceIndex =
+                min(
+                    Int(
+                        (
+                            Double(index) *
+                            step
+                        )
+                        .rounded()
+                    ),
+                    coordinates.count - 1
+                )
+
+            result.append(
+                coordinates[
+                    sourceIndex
+                ]
+            )
+        }
+
+        return result
+    }
+}
+
+// MARK: - Single Route Point
+
+private struct RouteSinglePointView:
+    View {
+
+    let accent: Color
+
+    var body: some View {
+
+        ZStack {
+
+            Circle()
+                .fill(
+                    accent.opacity(0.10)
+                )
+                .frame(
+                    width: 34,
+                    height: 34
+                )
+
+            Circle()
+                .fill(
+                    accent.opacity(0.85)
+                )
+                .frame(
+                    width: 9,
+                    height: 9
+                )
+                .overlay {
+
+                    Circle()
+                        .stroke(
+                            .background,
+                            lineWidth:
+                                2
+                        )
+                }
+        }
+        .frame(
+            maxWidth: .infinity,
+            maxHeight: .infinity
+        )
     }
 }
 
@@ -1098,8 +1543,8 @@ private struct RouteDrawingView:
     let coordinates:
         [CLLocationCoordinate2D]
 
-    let size:
-        CGSize
+    let size: CGSize
+    let accent: Color
 
     var body: some View {
 
@@ -1115,31 +1560,29 @@ private struct RouteDrawingView:
 
             if layout.points.count >= 2 {
 
-                Path { path in
-
-                    guard
-                        let first =
-                            layout.points.first
-                    else {
-                        return
-                    }
-
-                    path.move(
-                        to:
-                            first
-                    )
-
-                    for point
-                        in layout.points.dropFirst()
-                    {
-                        path.addLine(
-                            to:
-                                point
-                        )
-                    }
-                }
+                routePath(
+                    points:
+                        layout.points
+                )
                 .stroke(
-                    Color.blue,
+                    accent.opacity(0.10),
+                    style:
+                        StrokeStyle(
+                            lineWidth:
+                                layout.lineWidth + 7,
+                            lineCap:
+                                .round,
+                            lineJoin:
+                                .round
+                        )
+                )
+
+                routePath(
+                    points:
+                        layout.points
+                )
+                .stroke(
+                    accent.opacity(0.78),
                     style:
                         StrokeStyle(
                             lineWidth:
@@ -1151,31 +1594,107 @@ private struct RouteDrawingView:
                         )
                 )
 
-                if let last =
-                    layout.points.last {
+                if let first =
+                    layout.points.first {
 
                     Circle()
                         .fill(
-                            Color.red
+                            .background
+                        )
+                        .frame(
+                            width: 9,
+                            height: 9
                         )
                         .overlay {
+
                             Circle()
-                                .stroke(
-                                    Color.white,
-                                    lineWidth:
-                                        2
+                                .fill(
+                                    .secondary
+                                )
+                                .frame(
+                                    width: 5,
+                                    height: 5
                                 )
                         }
-                        .frame(
-                            width:
-                                12,
-                            height:
-                                12
-                        )
                         .position(
-                            last
+                            first
                         )
                 }
+
+                if let last =
+                    layout.points.last {
+
+                    ZStack {
+
+                        Circle()
+                            .fill(
+                                accent.opacity(
+                                    0.12
+                                )
+                            )
+                            .frame(
+                                width: 28,
+                                height: 28
+                            )
+
+                        Circle()
+                            .fill(
+                                accent
+                            )
+                            .frame(
+                                width: 10,
+                                height: 10
+                            )
+                            .overlay {
+
+                                Circle()
+                                    .stroke(
+                                        .background,
+                                        lineWidth:
+                                            2
+                                    )
+                            }
+                    }
+                    .position(
+                        last
+                    )
+                }
+            }
+        }
+        .frame(
+            width:
+                size.width,
+            height:
+                size.height
+        )
+    }
+
+    private func routePath(
+        points:
+            [CGPoint]
+    ) -> Path {
+
+        Path { path in
+
+            guard
+                let first =
+                    points.first
+            else {
+                return
+            }
+
+            path.move(
+                to:
+                    first
+            )
+
+            for point
+                in points.dropFirst() {
+
+                path.addLine(
+                    to:
+                        point
+                )
             }
         }
     }
@@ -1185,11 +1704,8 @@ private struct RouteDrawingView:
 
 private struct RouteLayout {
 
-    let points:
-        [CGPoint]
-
-    let lineWidth:
-        CGFloat
+    let points: [CGPoint]
+    let lineWidth: CGFloat
 
     init(
         coordinates:
@@ -1199,11 +1715,13 @@ private struct RouteLayout {
     ) {
 
         guard
-            !coordinates.isEmpty
+            coordinates.count >= 2,
+            size.width > 0,
+            size.height > 0
         else {
 
-            self.points = []
-            self.lineWidth = 4
+            points = []
+            lineWidth = 3
             return
         }
 
@@ -1218,33 +1736,33 @@ private struct RouteLayout {
             )
 
         guard
-            let minimumLatitude =
+            let minLatitude =
                 latitudes.min(),
-            let maximumLatitude =
+            let maxLatitude =
                 latitudes.max(),
-            let minimumLongitude =
+            let minLongitude =
                 longitudes.min(),
-            let maximumLongitude =
+            let maxLongitude =
                 longitudes.max()
         else {
 
-            self.points = []
-            self.lineWidth = 4
+            points = []
+            lineWidth = 3
             return
         }
 
-        let latitudeSpan =
-            max(
-                maximumLatitude -
-                    minimumLatitude,
-                0.00001
-            )
-
         let centerLatitude =
             (
-                minimumLatitude +
-                maximumLatitude
+                minLatitude +
+                maxLatitude
             ) / 2
+
+        let latitudeSpan =
+            max(
+                maxLatitude -
+                    minLatitude,
+                0.00001
+            )
 
         let longitudeScale =
             max(
@@ -1259,33 +1777,34 @@ private struct RouteLayout {
         let longitudeSpan =
             max(
                 (
-                    maximumLongitude -
-                    minimumLongitude
+                    maxLongitude -
+                    minLongitude
                 ) *
                 longitudeScale,
                 0.00001
             )
 
         let padding =
-            min(
-                max(
+            max(
+                min(
                     min(
                         size.width,
                         size.height
-                    ) * 0.10,
-                    18
+                    ) *
+                    0.08,
+                    16
                 ),
-                32
+                6
             )
 
-        let drawingWidth =
+        let availableWidth =
             max(
                 size.width -
                     padding * 2,
                 1
             )
 
-        let drawingHeight =
+        let availableHeight =
             max(
                 size.height -
                     padding * 2,
@@ -1294,9 +1813,9 @@ private struct RouteLayout {
 
         let scale =
             min(
-                drawingWidth /
+                availableWidth /
                     longitudeSpan,
-                drawingHeight /
+                availableHeight /
                     latitudeSpan
             )
 
@@ -1320,38 +1839,41 @@ private struct RouteLayout {
                 usedHeight
             ) / 2
 
-        self.points =
+        points =
             coordinates.map {
                 coordinate in
 
-                let normalizedLongitude =
+                let xNormalized =
                     (
                         (
                             coordinate.longitude -
-                            minimumLongitude
+                            minLongitude
                         ) *
                         longitudeScale
-                    ) /
+                    )
+                    /
                     longitudeSpan
 
-                let normalizedLatitude =
+                let yNormalized =
                     (
-                        maximumLatitude -
+                        maxLatitude -
                         coordinate.latitude
-                    ) /
+                    )
+                    /
                     latitudeSpan
 
                 return CGPoint(
                     x:
                         originX +
                         CGFloat(
-                            normalizedLongitude
+                            xNormalized
                         ) *
                         usedWidth,
+
                     y:
                         originY +
                         CGFloat(
-                            normalizedLatitude
+                            yNormalized
                         ) *
                         usedHeight
                 )
@@ -1363,464 +1885,165 @@ private struct RouteLayout {
                 size.height
             )
 
-        self.lineWidth =
+        lineWidth =
             min(
                 max(
                     minimumDimension *
-                        0.024,
-                    3.5
+                        0.020,
+                    2.0
                 ),
-                6
+                4.0
             )
     }
 }
 
-// MARK: - Recording Duration
+// MARK: - Accessory Circular
 
-private struct RecordingDuration:
+private struct CircularRecordingView:
     View {
 
-    let startDate:
-        Date?
-
-    let currentDate:
-        Date
-
-    let fontSize:
-        CGFloat
+    let entry:
+        SimRaRecordingEntry
 
     var body: some View {
-
-        Text(
-            durationText
-        )
-        .font(
-            .system(
-                size:
-                    fontSize,
-                weight:
-                    .bold,
-                design:
-                    .rounded
-            )
-        )
-        .monospacedDigit()
-        .foregroundStyle(
-            Color.white
-        )
-        .lineLimit(
-            1
-        )
-        .minimumScaleFactor(
-            0.65
-        )
-        .contentTransition(
-            .numericText()
-        )
-    }
-
-    private var durationText:
-        String {
-
-        guard
-            let startDate
-        else {
-            return "00:00"
-        }
-
-        let elapsed =
-            max(
-                currentDate.timeIntervalSince(
-                    startDate
-                ),
-                0
-            )
-
-        let totalSeconds =
-            Int(
-                elapsed
-            )
-
-        let hours =
-            totalSeconds / 3_600
-
-        let minutes =
-            (
-                totalSeconds % 3_600
-            ) / 60
-
-        let seconds =
-            totalSeconds % 60
-
-        if hours > 0 {
-
-            return String(
-                format:
-                    "%d:%02d:%02d",
-                hours,
-                minutes,
-                seconds
-            )
-
-        } else {
-
-            return String(
-                format:
-                    "%02d:%02d",
-                minutes,
-                seconds
-            )
-        }
-    }
-}
-
-// MARK: - Recording Header
-
-private struct RecordingHeader:
-    View {
-
-    var body: some View {
-
-        HStack(
-            spacing:
-                7
-        ) {
-
-            Image(
-                systemName:
-                    "bicycle"
-            )
-            .font(
-                .system(
-                    size:
-                        14,
-                    weight:
-                        .bold
-                )
-            )
-
-            Text(
-                "SimRa"
-            )
-            .font(
-                .headline.weight(
-                    .bold
-                )
-            )
-
-            Spacer(
-                minLength:
-                    8
-            )
-
-            Circle()
-                .fill(
-                    Color.red
-                )
-                .frame(
-                    width:
-                        7,
-                    height:
-                        7
-                )
-
-            Text(
-                "Aufnahme"
-            )
-            .font(
-                .caption2.weight(
-                    .semibold
-                )
-            )
-        }
-        .foregroundStyle(
-            Color.white
-        )
-        .padding(
-            .horizontal,
-            10
-        )
-        .padding(
-            .vertical,
-            7
-        )
-        .background(
-            Color.black.opacity(
-                0.30
-            ),
-            in:
-                Capsule()
-        )
-    }
-}
-
-// MARK: - Small Header
-
-private struct SmallRecordingHeader:
-    View {
-
-    var body: some View {
-
-        HStack(
-            spacing:
-                6
-        ) {
-
-            Image(
-                systemName:
-                    "bicycle"
-            )
-            .font(
-                .caption.weight(
-                    .bold
-                )
-            )
-
-            Text(
-                "SimRa"
-            )
-            .font(
-                .caption.weight(
-                    .bold
-                )
-            )
-
-            Spacer(
-                minLength:
-                    4
-            )
-
-            Circle()
-                .fill(
-                    Color.red
-                )
-                .frame(
-                    width:
-                        6,
-                    height:
-                        6
-                )
-        }
-        .foregroundStyle(
-            Color.white
-        )
-        .padding(
-            .horizontal,
-            8
-        )
-        .padding(
-            .vertical,
-            6
-        )
-        .background(
-            Color.black.opacity(
-                0.30
-            ),
-            in:
-                Capsule()
-        )
-    }
-}
-
-// MARK: - Stop Button
-
-private struct StopButton:
-    View {
-
-    let size:
-        CGFloat
-
-    var body: some View {
-
-        if let url =
-            SimRaWidgetConfiguration
-                .stopURL {
-
-            Link(
-                destination:
-                    url
-            ) {
-
-                buttonContent
-            }
-            .buttonStyle(
-                .plain
-            )
-
-        } else {
-
-            buttonContent
-        }
-    }
-
-    private var buttonContent:
-        some View {
 
         ZStack {
 
             Circle()
                 .fill(
-                    .ultraThinMaterial
+                    .background
                 )
 
             Circle()
                 .stroke(
-                    Color.white.opacity(
-                        0.42
-                    ),
+                    .red.opacity(0.75),
                     lineWidth:
-                        1
+                        2
+                )
+                .padding(3)
+
+            VStack(spacing: 1) {
+
+                Image(
+                    systemName:
+                        "bicycle"
+                )
+                .font(
+                    .caption.weight(
+                        .bold
+                    )
                 )
 
-            Image(
-                systemName:
-                    "stop.fill"
-            )
-            .font(
-                .system(
+                RecordingDuration(
+                    startDate:
+                        entry.recordingStartDate,
                     size:
-                        size * 0.29,
-                    weight:
-                        .bold
+                        12
+                )
+            }
+        }
+        .widgetLabel {
+
+            Text(
+                formatDistance(
+                    entry.distanceMeters
                 )
             )
-            .foregroundStyle(
-                Color.red
-            )
         }
-        .frame(
-            width:
-                size,
-            height:
-                size
-        )
-        .accessibilityLabel(
-            "Aufnahme stoppen"
-        )
     }
 }
 
-// MARK: - Recording Metric
+// MARK: - Accessory Rectangular
 
-private struct RecordingMetric:
+private struct RectangularRecordingView:
     View {
 
-    let title:
-        String
-
-    let value:
-        String
-
-    let icon:
-        String
+    let entry:
+        SimRaRecordingEntry
 
     var body: some View {
 
-        HStack(
-            spacing:
-                7
-        ) {
+        HStack(spacing: 7) {
 
-            Image(
-                systemName:
-                    icon
+            RecordingIndicator()
+
+            VStack(
+                alignment: .leading,
+                spacing: 1
+            ) {
+
+                Text("SimRa")
+                    .font(
+                        .caption.weight(
+                            .semibold
+                        )
+                    )
+
+                RecordingDuration(
+                    startDate:
+                        entry.recordingStartDate,
+                    size:
+                        16
+                )
+            }
+
+            Spacer(
+                minLength: 4
+            )
+
+            Text(
+                formatDistance(
+                    entry.distanceMeters
+                )
             )
             .font(
                 .caption.weight(
                     .semibold
                 )
             )
+            .monospacedDigit()
+        }
+    }
+}
 
-            VStack(
-                alignment:
-                    .leading,
-                spacing:
-                    0
-            ) {
+// MARK: - Accessory Inline
+
+private struct InlineRecordingView:
+    View {
+
+    let entry:
+        SimRaRecordingEntry
+
+    var body: some View {
+
+        Label {
+
+            HStack(spacing: 4) {
+
+                RecordingDuration(
+                    startDate:
+                        entry.recordingStartDate,
+                    size:
+                        14
+                )
+
+                Text("·")
 
                 Text(
-                    title
-                )
-                .font(
-                    .caption2
-                )
-                .foregroundStyle(
-                    Color.white.opacity(
-                        0.65
-                    )
-                )
-
-                Text(
-                    value
-                )
-                .font(
-                    .subheadline.weight(
-                        .bold
+                    formatDistance(
+                        entry.distanceMeters
                     )
                 )
                 .monospacedDigit()
             }
-        }
-        .foregroundStyle(
-            Color.white
-        )
-        .padding(
-            .horizontal,
-            9
-        )
-        .padding(
-            .vertical,
-            7
-        )
-        .background(
-            Color.black.opacity(
-                0.26
-            ),
-            in:
-                RoundedRectangle(
-                    cornerRadius:
-                        11,
-                    style:
-                        .continuous
-                )
-        )
-    }
-}
 
-// MARK: - Incident Indicator
-
-private struct IncidentIndicator:
-    View {
-
-    let count:
-        Int
-
-    var body: some View {
-
-        HStack(
-            spacing:
-                4
-        ) {
+        } icon: {
 
             Image(
                 systemName:
-                    "exclamationmark.triangle.fill"
-            )
-
-            Text(
-                String(
-                    count
-                )
+                    "bicycle"
             )
         }
-        .font(
-            .caption.weight(
-                .semibold
-            )
-        )
-        .foregroundStyle(
-            Color.orange
-        )
     }
 }
 
@@ -1853,14 +2076,43 @@ private struct StatisticsWidgetView:
                     entry
             )
 
-        case .systemLarge,
-             .systemExtraLarge:
+        case .systemLarge:
 
             LargeStatisticsView(
                 entry:
                     entry,
                 family:
                     family
+            )
+
+        case .systemExtraLarge:
+
+            LargeStatisticsView(
+                entry:
+                    entry,
+                family:
+                    family
+            )
+
+        case .accessoryCircular:
+
+            CircularStatisticsView(
+                entry:
+                    entry
+            )
+
+        case .accessoryRectangular:
+
+            RectangularStatisticsView(
+                entry:
+                    entry
+            )
+
+        case .accessoryInline:
+
+            InlineStatisticsView(
+                entry:
+                    entry
             )
 
         @unknown default:
@@ -1881,13 +2133,20 @@ private struct SmallStatisticsView:
     let entry:
         SimRaRecordingEntry
 
+    private var totalKilometers:
+        Double {
+
+        entry.weeklyKilometers.reduce(
+            0,
+            +
+        )
+    }
+
     var body: some View {
 
         VStack(
-            alignment:
-                .leading,
-            spacing:
-                0
+            alignment: .leading,
+            spacing: 0
         ) {
 
             StatisticsHeader(
@@ -1896,15 +2155,13 @@ private struct SmallStatisticsView:
             )
 
             Spacer(
-                minLength:
-                    8
+                minLength: 8
             )
 
             HStack(
                 alignment:
                     .firstTextBaseline,
-                spacing:
-                    4
+                spacing: 4
             ) {
 
                 Text(
@@ -1916,48 +2173,34 @@ private struct SmallStatisticsView:
                 )
                 .font(
                     .system(
-                        size:
-                            30,
-                        weight:
-                            .bold,
-                        design:
-                            .rounded
+                        size: 30,
+                        weight: .bold,
+                        design: .rounded
                     )
                 )
                 .monospacedDigit()
-                .lineLimit(
-                    1
-                )
-                .minimumScaleFactor(
-                    0.70
-                )
 
-                Text(
-                    "km"
-                )
-                .font(
-                    .caption.weight(
-                        .medium
+                Text("km")
+                    .font(
+                        .caption.weight(
+                            .medium
+                        )
                     )
+                    .foregroundStyle(
+                        .secondary
+                    )
+            }
+
+            Text("in 4 Wochen")
+                .font(
+                    .caption
                 )
                 .foregroundStyle(
                     .secondary
                 )
-            }
-
-            Text(
-                "in 4 Wochen"
-            )
-            .font(
-                .caption
-            )
-            .foregroundStyle(
-                .secondary
-            )
 
             Spacer(
-                minLength:
-                    7
+                minLength: 7
             )
 
             MiniWeeklyBars(
@@ -1966,8 +2209,7 @@ private struct SmallStatisticsView:
             )
 
             Spacer(
-                minLength:
-                    7
+                minLength: 7
             )
 
             StartRecordingButton(
@@ -1975,18 +2217,7 @@ private struct SmallStatisticsView:
                     true
             )
         }
-        .padding(
-            12
-        )
-    }
-
-    private var totalKilometers:
-        Double {
-
-        entry.weeklyKilometers.reduce(
-            0,
-            +
-        )
+        .padding(12)
     }
 }
 
@@ -1997,121 +2228,6 @@ private struct MediumStatisticsView:
 
     let entry:
         SimRaRecordingEntry
-
-    var body: some View {
-
-        VStack(
-            alignment:
-                .leading,
-            spacing:
-                10
-        ) {
-
-            StatisticsHeader(
-                compact:
-                    false
-            )
-
-            HStack(
-                alignment:
-                    .bottom,
-                spacing:
-                    16
-            ) {
-
-                VStack(
-                    alignment:
-                        .leading,
-                    spacing:
-                        2
-                ) {
-
-                    HStack(
-                        alignment:
-                            .firstTextBaseline,
-                        spacing:
-                            4
-                    ) {
-
-                        Text(
-                            String(
-                                format:
-                                    "%.1f",
-                                totalKilometers
-                            )
-                        )
-                        .font(
-                            .system(
-                                size:
-                                    36,
-                                weight:
-                                    .bold,
-                                design:
-                                    .rounded
-                            )
-                        )
-                        .monospacedDigit()
-                        .lineLimit(
-                            1
-                        )
-
-                        Text(
-                            "km"
-                        )
-                        .font(
-                            .subheadline.weight(
-                                .medium
-                            )
-                        )
-                        .foregroundStyle(
-                            .secondary
-                        )
-                    }
-
-                    Text(
-                        String(
-                            format:
-                                "%d Fahrten",
-                            totalRides
-                        )
-                    )
-                    .font(
-                        .subheadline
-                    )
-                    .foregroundStyle(
-                        .secondary
-                    )
-                }
-
-                Spacer(
-                    minLength:
-                        0
-                )
-
-                MiniWeeklyBars(
-                    values:
-                        entry.weeklyKilometers
-                )
-                .frame(
-                    width:
-                        145
-                )
-            }
-
-            Spacer(
-                minLength:
-                    0
-            )
-
-            StartRecordingButton(
-                compact:
-                    false
-            )
-        }
-        .padding(
-            14
-        )
-    }
 
     private var totalKilometers:
         Double {
@@ -2130,6 +2246,100 @@ private struct MediumStatisticsView:
             +
         )
     }
+
+    var body: some View {
+
+        VStack(
+            alignment: .leading,
+            spacing: 10
+        ) {
+
+            StatisticsHeader(
+                compact:
+                    false
+            )
+
+            HStack(
+                alignment:
+                    .bottom,
+                spacing:
+                    16
+            ) {
+
+                VStack(
+                    alignment:
+                        .leading,
+                    spacing: 2
+                ) {
+
+                    HStack(
+                        alignment:
+                            .firstTextBaseline,
+                        spacing: 4
+                    ) {
+
+                        Text(
+                            String(
+                                format:
+                                    "%.1f",
+                                totalKilometers
+                            )
+                        )
+                        .font(
+                            .system(
+                                size: 36,
+                                weight: .bold,
+                                design: .rounded
+                            )
+                        )
+                        .monospacedDigit()
+
+                        Text("km")
+                            .font(
+                                .subheadline.weight(
+                                    .medium
+                                )
+                            )
+                            .foregroundStyle(
+                                .secondary
+                            )
+                    }
+
+                    Text(
+                        "\(totalRides) Fahrten"
+                    )
+                    .font(
+                        .subheadline
+                    )
+                    .foregroundStyle(
+                        .secondary
+                    )
+                }
+
+                Spacer(
+                    minLength: 0
+                )
+
+                MiniWeeklyBars(
+                    values:
+                        entry.weeklyKilometers
+                )
+                .frame(
+                    width: 145
+                )
+            }
+
+            Spacer(
+                minLength: 0
+            )
+
+            StartRecordingButton(
+                compact:
+                    false
+            )
+        }
+        .padding(14)
+    }
 }
 
 // MARK: - Large Statistics
@@ -2143,13 +2353,29 @@ private struct LargeStatisticsView:
     let family:
         WidgetFamily
 
+    private var totalKilometers:
+        Double {
+
+        entry.weeklyKilometers.reduce(
+            0,
+            +
+        )
+    }
+
+    private var totalRides:
+        Int {
+
+        entry.weeklyRideCounts.reduce(
+            0,
+            +
+        )
+    }
+
     var body: some View {
 
         VStack(
-            alignment:
-                .leading,
-            spacing:
-                12
+            alignment: .leading,
+            spacing: 12
         ) {
 
             StatisticsHeader(
@@ -2203,8 +2429,7 @@ private struct LargeStatisticsView:
             )
 
             Spacer(
-                minLength:
-                    0
+                minLength: 0
             )
 
             StartRecordingButton(
@@ -2219,24 +2444,6 @@ private struct LargeStatisticsView:
             : 16
         )
     }
-
-    private var totalKilometers:
-        Double {
-
-        entry.weeklyKilometers.reduce(
-            0,
-            +
-        )
-    }
-
-    private var totalRides:
-        Int {
-
-        entry.weeklyRideCounts.reduce(
-            0,
-            +
-        )
-    }
 }
 
 // MARK: - Statistics Header
@@ -2244,15 +2451,11 @@ private struct LargeStatisticsView:
 private struct StatisticsHeader:
     View {
 
-    let compact:
-        Bool
+    let compact: Bool
 
     var body: some View {
 
-        HStack(
-            spacing:
-                7
-        ) {
+        HStack(spacing: 7) {
 
             Image(
                 systemName:
@@ -2269,37 +2472,32 @@ private struct StatisticsHeader:
                 )
             )
 
-            Text(
-                "SimRa"
-            )
-            .font(
-                compact
-                ? .caption.weight(
-                    .bold
+            Text("SimRa")
+                .font(
+                    compact
+                    ? .caption.weight(
+                        .bold
+                    )
+                    : .headline.weight(
+                        .semibold
+                    )
                 )
-                : .headline.weight(
-                    .semibold
-                )
-            )
 
             Spacer(
-                minLength:
-                    4
+                minLength: 4
             )
 
             if !compact {
 
-                Text(
-                    "4 Wochen"
-                )
-                .font(
-                    .caption2.weight(
-                        .medium
+                Text("4 Wochen")
+                    .font(
+                        .caption2.weight(
+                            .medium
+                        )
                     )
-                )
-                .foregroundStyle(
-                    .secondary
-                )
+                    .foregroundStyle(
+                        .secondary
+                    )
             }
         }
     }
@@ -2310,24 +2508,14 @@ private struct StatisticsHeader:
 private struct StatisticBlock:
     View {
 
-    let title:
-        String
-
-    let value:
-        String
-
-    let unit:
-        String?
-
-    let icon:
-        String
+    let title: String
+    let value: String
+    let unit: String?
+    let icon: String
 
     var body: some View {
 
-        HStack(
-            spacing:
-                9
-        ) {
+        HStack(spacing: 9) {
 
             Image(
                 systemName:
@@ -2345,55 +2533,44 @@ private struct StatisticBlock:
             VStack(
                 alignment:
                     .leading,
-                spacing:
-                    1
+                spacing: 1
             ) {
 
-                Text(
-                    title
-                )
-                .font(
-                    .caption
-                )
-                .foregroundStyle(
-                    .secondary
-                )
+                Text(title)
+                    .font(
+                        .caption
+                    )
+                    .foregroundStyle(
+                        .secondary
+                    )
 
                 HStack(
                     alignment:
                         .firstTextBaseline,
-                    spacing:
-                        3
+                    spacing: 3
                 ) {
 
-                    Text(
-                        value
-                    )
-                    .font(
-                        .system(
-                            size:
-                                28,
-                            weight:
-                                .bold,
-                            design:
-                                .rounded
+                    Text(value)
+                        .font(
+                            .system(
+                                size: 28,
+                                weight: .bold,
+                                design: .rounded
+                            )
                         )
-                    )
-                    .monospacedDigit()
+                        .monospacedDigit()
 
                     if let unit {
 
-                        Text(
-                            unit
-                        )
-                        .font(
-                            .caption.weight(
-                                .medium
+                        Text(unit)
+                            .font(
+                                .caption.weight(
+                                    .medium
+                                )
                             )
-                        )
-                        .foregroundStyle(
-                            .secondary
-                        )
+                            .foregroundStyle(
+                                .secondary
+                            )
                     }
                 }
             }
@@ -2426,8 +2603,7 @@ private struct WeeklyBars:
                 )
 
             HStack(
-                alignment:
-                    .bottom,
+                alignment: .bottom,
                 spacing:
                     compact
                     ? 8
@@ -2441,25 +2617,23 @@ private struct WeeklyBars:
                 ) { index in
 
                     VStack(
-                        spacing:
-                            5
+                        spacing: 5
                     ) {
 
                         Spacer(
-                            minLength:
-                                0
+                            minLength: 0
                         )
 
                         RoundedRectangle(
-                            cornerRadius:
-                                5,
+                            cornerRadius: 5,
                             style:
                                 .continuous
                         )
                         .fill(
-                            Color.green.opacity(
+                            .green.opacity(
                                 index ==
-                                safeValues.count - 1
+                                    safeValues.count -
+                                    1
                                 ? 0.95
                                 : 0.42
                             )
@@ -2469,11 +2643,11 @@ private struct WeeklyBars:
                                 max(
                                     6,
                                     geometry.size.height *
-                                    0.68 *
-                                    CGFloat(
-                                        safeValues[index] /
-                                        maximum
-                                    )
+                                        0.68 *
+                                        CGFloat(
+                                            safeValues[index] /
+                                            maximum
+                                        )
                                 )
                         )
 
@@ -2519,23 +2693,23 @@ private struct WeeklyBars:
                 values.suffix(4)
             )
 
-        let missing =
-            max(
-                0,
-                4 - suffix.count
+        return
+            Array(
+                repeating:
+                    0,
+                count:
+                    max(
+                        0,
+                        4 -
+                        suffix.count
+                    )
             )
-
-        return Array(
-            repeating:
-                0,
-            count:
-                missing
-        ) + suffix
+            +
+            suffix
     }
 
     private func weekLabel(
-        _ index:
-            Int
+        _ index: Int
     ) -> String {
 
         let calendar =
@@ -2544,8 +2718,10 @@ private struct WeeklyBars:
         guard
             let currentWeek =
                 calendar.dateInterval(
-                    of: .weekOfYear,
-                    for: .now
+                    of:
+                        .weekOfYear,
+                    for:
+                        .now
                 ),
             let date =
                 calendar.date(
@@ -2567,11 +2743,7 @@ private struct WeeklyBars:
                     date
             )
 
-        return String(
-            format:
-                "KW %d",
-            week
-        )
+        return "KW \(week)"
     }
 }
 
@@ -2610,13 +2782,12 @@ private struct MiniWeeklyBars:
                 ) { index in
 
                     RoundedRectangle(
-                        cornerRadius:
-                            3,
+                        cornerRadius: 3,
                         style:
                             .continuous
                     )
                     .fill(
-                        Color.green.opacity(
+                        .green.opacity(
                             index == 3
                             ? 0.95
                             : 0.40
@@ -2627,10 +2798,10 @@ private struct MiniWeeklyBars:
                             max(
                                 4,
                                 geometry.size.height *
-                                CGFloat(
-                                    safeValues[index] /
-                                    maximum
-                                )
+                                    CGFloat(
+                                        safeValues[index] /
+                                        maximum
+                                    )
                             )
                     )
                     .frame(
@@ -2656,22 +2827,23 @@ private struct MiniWeeklyBars:
                 values.suffix(4)
             )
 
-        let missing =
-            max(
-                0,
-                4 - suffix.count
+        return
+            Array(
+                repeating:
+                    0,
+                count:
+                    max(
+                        0,
+                        4 -
+                        suffix.count
+                    )
             )
-
-        return Array(
-            repeating:
-                0,
-            count:
-                missing
-        ) + suffix
+            +
+            suffix
     }
 }
 
-// MARK: - Start Recording Button
+// MARK: - Start Recording
 
 private struct StartRecordingButton:
     View {
@@ -2689,11 +2861,10 @@ private struct StartRecordingButton:
                 destination:
                     url
             ) {
-
                 content
             }
-            .buttonStyle(
-                .plain
+            .accessibilityLabel(
+                "Aufnahme starten"
             )
 
         } else {
@@ -2705,10 +2876,7 @@ private struct StartRecordingButton:
     private var content:
         some View {
 
-        HStack(
-            spacing:
-                7
-        ) {
+        HStack(spacing: 7) {
 
             Image(
                 systemName:
@@ -2737,9 +2905,7 @@ private struct StartRecordingButton:
                     .semibold
                 )
             )
-            .lineLimit(
-                1
-            )
+            .lineLimit(1)
             .minimumScaleFactor(
                 0.8
             )
@@ -2749,68 +2915,154 @@ private struct StartRecordingButton:
         )
         .frame(
             maxWidth:
-                .infinity
-        )
-        .frame(
+                .infinity,
             minHeight:
                 compact
                 ? 30
                 : 34
         )
         .background(
-            Color.green.opacity(
-                0.11
-            ),
+            .green.opacity(0.10),
             in:
                 Capsule()
         )
-        .overlay {
-            Capsule()
-                .stroke(
-                    Color.green.opacity(
-                        0.18
-                    ),
-                    lineWidth:
-                        1
+    }
+}
+
+// MARK: - Accessory Statistics
+
+private struct CircularStatisticsView:
+    View {
+
+    let entry:
+        SimRaRecordingEntry
+
+    private var totalKilometers:
+        Double {
+
+        entry.weeklyKilometers.reduce(
+            0,
+            +
+        )
+    }
+
+    var body: some View {
+
+        VStack(spacing: 0) {
+
+            Image(
+                systemName:
+                    "bicycle"
+            )
+            .font(
+                .caption.weight(
+                    .semibold
                 )
+            )
+
+            Text(
+                String(
+                    format:
+                        "%.0f",
+                    totalKilometers
+                )
+            )
+            .font(
+                .caption.weight(
+                    .bold
+                )
+            )
+            .monospacedDigit()
         }
     }
 }
 
-// MARK: - Widget Background
+private struct RectangularStatisticsView:
+    View {
 
-private extension View {
+    let entry:
+        SimRaRecordingEntry
 
-    @ViewBuilder
-    func simRaWidgetBackground()
-        -> some View {
+    private var totalKilometers:
+        Double {
 
-        if #available(
-            iOS 17.0,
-            *
-        ) {
+        entry.weeklyKilometers.reduce(
+            0,
+            +
+        )
+    }
 
-            self.containerBackground(
-                for:
-                    .widget
-            ) {
-                Color.clear
-            }
+    var body: some View {
 
-        } else {
+        HStack {
 
-            self.background(
-                Color.clear
+            Image(
+                systemName:
+                    "bicycle"
             )
+
+            VStack(
+                alignment:
+                    .leading,
+                spacing: 1
+            ) {
+
+                Text("SimRa")
+                    .font(
+                        .caption.weight(
+                            .semibold
+                        )
+                    )
+
+                Text(
+                    String(
+                        format:
+                            "%.1f km",
+                        totalKilometers
+                    )
+                )
+                .font(
+                    .caption2
+                )
+                .monospacedDigit()
+            }
         }
+    }
+}
+
+private struct InlineStatisticsView:
+    View {
+
+    let entry:
+        SimRaRecordingEntry
+
+    private var totalKilometers:
+        Double {
+
+        entry.weeklyKilometers.reduce(
+            0,
+            +
+        )
+    }
+
+    var body: some View {
+
+        Label(
+            String(
+                format:
+                    "%.1f km",
+                totalKilometers
+            ),
+            systemImage:
+                "bicycle"
+        )
     }
 }
 
 // MARK: - Distance Formatting
 
 private func formatDistance(
-    _ meters:
-        Double
+    _ meters: Double
 ) -> String {
 
     let safeMeters =
@@ -2843,6 +3095,6 @@ private func formatDistance(
     return String(
         format:
             "%.0f km",
-            kilometers
+        kilometers
     )
 }

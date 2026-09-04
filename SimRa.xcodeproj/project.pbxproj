@@ -29,6 +29,13 @@
 		9F39596930488C760034C61D /* SimRa.icon in Resources */ = {isa = PBXBuildFile; fileRef = 9F39596830488C760034C61D /* SimRa.icon */; };
 		9F67C8D83045FA510080CDED /* SimRaRecordingActivityManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F67C8D73045FA510080CDED /* SimRaRecordingActivityManager.swift */; };
 		9F67C8DA304642E60080CDED /* SimpleZipArchiver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F67C8D9304642E60080CDED /* SimpleZipArchiver.swift */; };
+		9FA202D3304B08A7003D5164 /* RecordingAppIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7A100040000000000000004 /* RecordingAppIntents.swift */; };
+		9FA202D6304B126E003D5164 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FE3CFC73040467900C11560 /* AppDelegate.swift */; };
+		9FA202D7304B1C44003D5164 /* RecordingShortcutBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FE3CF7F303FB37200C11560 /* RecordingShortcutBridge.swift */; };
+		9FA202D8304B1F55003D5164 /* Trip.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FC315E630421ADC00EFB67D /* Trip.swift */; };
+		9FA202D9304B1F6D003D5164 /* Regions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FE3CFEC30407F4A00C11560 /* Regions.swift */; };
+		9FA202DA304B1F7E003D5164 /* Region.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FE3CFEA30407F4200C11560 /* Region.swift */; };
+		9FA202DB304B20DF003D5164 /* TripModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FC315E4304219CB00EFB67D /* TripModels.swift */; };
 		9FC315E5304219CB00EFB67D /* TripModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FC315E4304219CB00EFB67D /* TripModels.swift */; };
 		9FC315E730421ADC00EFB67D /* Trip.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FC315E630421ADC00EFB67D /* Trip.swift */; };
 		9FC315EB304259A000EFB67D /* DSBarChart.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FC315EA304259A000EFB67D /* DSBarChart.swift */; };
@@ -147,7 +154,6 @@
 		8483380C2253E2CB00342285 /* de */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; name = de; path = de.lproj/constants.plist; sourceTree = "<group>"; };
 		84DD1E83224C0027004895F9 /* SimRa.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SimRa.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		84DD1E92224C0028004895F9 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
-		84DD1E97224C0028004895F9 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		84DD1E9E224C0028004895F9 /* SimRaTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SimRaTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		84DD1EA2224C0028004895F9 /* simraTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = simraTests.m; sourceTree = "<group>"; };
 		84DD1EA4224C0028004895F9 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
@@ -161,7 +167,7 @@
 		9F39596830488C760034C61D /* SimRa.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = SimRa.icon; sourceTree = "<group>"; };
 		9F67C8D73045FA510080CDED /* SimRaRecordingActivityManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SimRaRecordingActivityManager.swift; sourceTree = "<group>"; };
 		9F67C8D9304642E60080CDED /* SimpleZipArchiver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SimpleZipArchiver.swift; sourceTree = "<group>"; };
-		9FC315DF30415C2800EFB67D /* RecordingShortcutBridge.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = RecordingShortcutBridge.h; sourceTree = "<group>"; };
+		9FA202D1304AFA94003D5164 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		9FC315E4304219CB00EFB67D /* TripModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TripModels.swift; sourceTree = "<group>"; };
 		9FC315E630421ADC00EFB67D /* Trip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Trip.swift; sourceTree = "<group>"; };
 		9FC315EA304259A000EFB67D /* DSBarChart.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DSBarChart.swift; sourceTree = "<group>"; };
@@ -198,13 +204,6 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		9F1887B2303DEC500014F58C /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
-			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
-			membershipExceptions = (
-				Info.plist,
-			);
-			target = 9F18879B303DEC500014F58C /* SimRa WidgetsExtension */;
-		};
 		9FAB383A303F942D00FFE238 /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
@@ -213,10 +212,17 @@
 			);
 			target = 84DD1E82224C0027004895F9 /* SimRa */;
 		};
+		9FAD67AB304AF5B1007D1EA9 /* PBXFileSystemSynchronizedBuildFileExceptionSet */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 9F18879B303DEC500014F58C /* SimRa WidgetsExtension */;
+		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		9F1887A1303DEC500014F58C /* SimRa Widgets */ = {isa = PBXFileSystemSynchronizedRootGroup; exceptions = (9FAB383A303F942D00FFE238 /* PBXFileSystemSynchronizedBuildFileExceptionSet */, 9F1887B2303DEC500014F58C /* PBXFileSystemSynchronizedBuildFileExceptionSet */, ); explicitFileTypes = {}; explicitFolders = (); path = "SimRa Widgets"; sourceTree = "<group>"; };
+		9F1887A1303DEC500014F58C /* SimRa Widgets */ = {isa = PBXFileSystemSynchronizedRootGroup; exceptions = (9FAB383A303F942D00FFE238 /* PBXFileSystemSynchronizedBuildFileExceptionSet */, 9FAD67AB304AF5B1007D1EA9 /* PBXFileSystemSynchronizedBuildFileExceptionSet */, ); explicitFileTypes = {}; explicitFolders = (); path = "SimRa Widgets"; sourceTree = "<group>"; };
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -289,12 +295,12 @@
 		6383AC1E2657E6FC0038F3AE /* SupportingFiles */ = {
 			isa = PBXGroup;
 			children = (
+				9FA202D1304AFA94003D5164 /* Info.plist */,
 				9F67C8D9304642E60080CDED /* SimpleZipArchiver.swift */,
 				9FE3CF79303FB2BA00C11560 /* SimRaApp.swift */,
 				9FE3CF7B303FB2C000C11560 /* BluetoothObserver.swift */,
 				8421D68F2254B4E50056B62C /* LaunchScreen.storyboard */,
 				84DD1E8C224C0027004895F9 /* Main.storyboard */,
-				84DD1E97224C0028004895F9 /* Info.plist */,
 				84564AF622549B1100D46132 /* Localizable.strings */,
 				9FE3CFB930403AB200C11560 /* ClosePassInfo.swift */,
 				9FE3CFF03040E5D700C11560 /* SimRaView.swift */,
@@ -323,7 +329,6 @@
 		6383AC212657E71D0038F3AE /* Utils */ = {
 			isa = PBXGroup;
 			children = (
-				9FC315DF30415C2800EFB67D /* RecordingShortcutBridge.h */,
 				63DB6245269F3E9500E09EC6 /* BluetoothManager */,
 				6383AC342657E9400038F3AE /* Helper */,
 				6383AC352657E9680038F3AE /* DSBarChart */,
@@ -808,6 +813,9 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				9FA202D3304B08A7003D5164 /* RecordingAppIntents.swift in Sources */,
+				9FA202DA304B1F7E003D5164 /* Region.swift in Sources */,
+				9FA202D9304B1F6D003D5164 /* Regions.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1016,7 +1024,6 @@
 				PRODUCT_BUNDLE_IDENTIFIER = "de.tu-berlin.mcc.simra.emil";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
-				SWIFT_OBJC_BRIDGING_HEADER = "SimRa/Source/Utils/SimRa-Bridging-Header.h";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -1050,7 +1057,6 @@
 				PRODUCT_BUNDLE_IDENTIFIER = "de.tu-berlin.mcc.simra.emil";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
-				SWIFT_OBJC_BRIDGING_HEADER = "SimRa/Source/Utils/SimRa-Bridging-Header.h";
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
@@ -1071,7 +1077,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = "de.tu-berlin.mcc.simra.emil";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/SimRa.temp_caseinsensitive_rename.temp_caseinsensitive_rename.app/SimRa.temp_caseinsensitive_rename.temp_caseinsensitive_rename";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/SimRa.app/SimRa";
 			};
 			name = Debug;
 		};
@@ -1090,7 +1096,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = "de.tu-berlin.mcc.simra.emil";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				TARGETED_DEVICE_FAMILY = "1,2";
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/SimRa.temp_caseinsensitive_rename.temp_caseinsensitive_rename.app/SimRa.temp_caseinsensitive_rename.temp_caseinsensitive_rename";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/SimRa.app/SimRa";
 			};
 			name = Release;
 		};
@@ -1158,12 +1164,12 @@
 					"@executable_path/../../Frameworks",
 				);
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 26;
 				PRODUCT_BUNDLE_IDENTIFIER = "de.tu-berlin.mcc.simra.emil.SimRa-Widgets";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
-				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG WIDGET_EXTENSION $(inherited)";
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
@@ -1197,11 +1203,12 @@
 					"@executable_path/../../Frameworks",
 				);
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 26;
 				PRODUCT_BUNDLE_IDENTIFIER = "de.tu-berlin.mcc.simra.emil.SimRa-Widgets";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "WIDGET_EXTENSION $(inherited)";
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
