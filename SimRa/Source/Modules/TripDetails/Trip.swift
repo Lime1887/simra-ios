@@ -41,42 +41,40 @@ public final class TRIPWrapper: NSObject, ObservableObject {
     
     // MARK: - Initialization
     
+    // FIX: Swift convenience initializer MUST delegate to self.init, not super.init
     public convenience init() {
-        self.initFromStorage(identifier: 0)
+        self.init()
+        self._objcTrip = Trip()
+        self.syncFromObjCTrip()
     }
     
-    public convenience init(identifier: Int = 0) {
-        self.initFromStorage(identifier: identifier)
+    // FIX: Use correct argument label 'identifier' to match ObjC initializer
+    public convenience init(identifier: Int) {
+        self.init(identifier: identifier)
+        let objCTrip = Trip(identifier: identifier)
+        if objCTrip != nil {
+            self._objcTrip = objCTrip
+            self.syncFromObjCTrip()
+        }
     }
     
     public convenience init(trip: Trip) {
+        self.init()
         self._objcTrip = trip
-        // Map properties from ObjC Trip
-        bikeTypeId = trip.bikeTypeId
-        positionId = trip.positionId
-        childseat = trip.childseat
-        trailer = trip.trailer
-        edited = trip.edited
-        uploaded = trip.uploaded
-        identifier = trip.identifier
-        statisticsAdded = trip.statisticsAdded
-        reUploaded = trip.reUploaded
-        tripLocations = trip.tripLocations as? [TripLocation] ?? []
-        startLocation = trip.startLocation
-        lastLocation = trip.lastLocation
-        lastTripMotion = trip.lastTripMotion
+        self.syncFromObjCTrip()
     }
     
     // MARK: - Static Factory Methods
     
+    // FIX: Match ObjC method signature - use identifier: label
     public static func fromStorage(identifier: Int) -> TRIPWrapper? {
-        guard let objCTrip = Trip.initFromStorage(identifier: identifier) else {
-            return nil
+        // ObjC initializer: - (instancetype)initFromStorage:(NSInteger)identifier
+        let objCTrip = Trip(identifier: identifier)
+        if objCTrip != nil {
+            let wrapper = TRIPWrapper(trip: objCTrip!)
+            return wrapper
         }
-        let wrapper = TRIPWrapper()
-        wrapper._objcTrip = objCTrip
-        wrapper.syncFromObjCTrip()
-        return wrapper
+        return nil
     }
     
     // MARK: - Sync from Internal ObjC Trip
@@ -121,75 +119,123 @@ public final class TRIPWrapper: NSObject, ObservableObject {
         _objcTrip?.successfullyReUploaded()
     }
     
+    // FIX: tripInfo is a method in ObjC, not a property - keep as computed property
     @objc
     public var tripInfo: TripInfo {
-        return _objcTrip?.tripInfo ?? TripInfo()
-    }
-    
-    @objc
-    public var length: Int {
-        return _objcTrip?.length ?? 0
-    }
-    
-    @objc
-    public var idle: Int {
-        return _objcTrip?.idle ?? 0
-    }
-    
-    @objc
-    public var numberOfScary: Int {
-        return _objcTrip?.numberOfScary ?? 0
-    }
-    
-    @objc
-    public var tripAnnotations: Int {
-        return _objcTrip?.tripAnnotations ?? 0
-    }
-    
-    @objc
-    public var tripValidAnnotations: Int {
-        return _objcTrip?.tripValidAnnotations ?? 0
-    }
-    
-    @objc
-    public var duration: NSDateInterval? {
         get {
-            return _objcTrip?.duration
-        }
-    }
-    
-    @objc
-    public var csvFile: NSURL? {
-        return _objcTrip?.csvFile
-    }
-    
-    @objc
-    public var gpxFile: NSURL? {
-        get {
-            return _objcTrip?.gpxFile
+            if _objcTrip == nil {
+                return TripInfo()
+            }
+            return _objcTrip!.tripInfo
         }
         set {
-            _objcTrip?.gpxFile = newValue
+            // This property is read-only in the Objective-C Trip class
+            // The setter does nothing
+        }
+    }
+    
+    // FIX: Add 'override' keyword for computed properties
+    @objc
+    public override var length: Int {
+        get {
+            if _objcTrip == nil {
+                return 0
+            }
+            return _objcTrip!.length
+        }
+        set {
+            // This property is read-only in the Objective-C Trip class
+            // The setter does nothing
         }
     }
     
     @objc
-    public var geoJSONFile: NSURL? {
+    public override var idle: Int {
         get {
-            return _objcTrip?.geoJSONFile
+            if _objcTrip == nil {
+                return 0
+            }
+            return _objcTrip!.idle
         }
         set {
-            _objcTrip?.geoJSONFile = newValue
+            // This property is read-only in the Objective-C Trip class
+            // The setter does nothing
         }
     }
     
     @objc
-    public var kmlFile: NSURL? {
+    public override var numberOfScary: Int {
         get {
-            return _objcTrip?.kmlFile
+            if _objcTrip == nil {
+                return 0
+            }
+            return _objcTrip!.numberOfScary
         }
         set {
-            _objcTrip?.kmlFile = newValue
+            // This property is read-only in the Objective-C Trip class
+            // The setter does nothing
         }
+    }
+    
+    @objc
+    public override var tripAnnotations: Int {
+        get {
+            if _objcTrip == nil {
+                return 0
+            }
+            return _objcTrip!.tripAnnotations
+        }
+        set {
+            // This property is read-only in the Objective-C Trip class
+            // The setter does nothing
+        }
+    }
+    
+    @objc
+    public override var tripValidAnnotations: Int {
+        get {
+            if _objcTrip == nil {
+                return 0
+            }
+            return _objcTrip!.tripValidAnnotations
+        }
+        set {
+            // This property is read-only in the Objective-C Trip class
+            // The setter does nothing
+        }
+    }
+    
+    @objc
+    public func duration() -> NSDateInterval? {
+        return _objcTrip?.duration
+    }
+    
+    @objc
+    public func gpxFile() -> NSURL? {
+        return _objcTrip?.gpxFile
+    }
+    
+    @objc
+    public func geoJSONFile() -> NSURL? {
+        return _objcTrip?.geoJSONFile
+    }
+    
+    @objc
+    public func kmlFile() -> NSURL? {
+        return _objcTrip?.kmlFile
+    }
+}
+
+// MARK: - Access to ObjC Trip class (for bridging)
+// Required to access Trip methods that don't exist in the wrapper
+
+// MARK: - Helper Extensions for Swift-ObjC Interop
+
+// MARK: - Trip Extension (for Swift syntax access)
+extension Trip {
+    @objc 
+    public static func initWithIdentifier(identifier: Int) -> Trip? {
+        let trip = self.init(identifier: identifier)
+        return trip
     }
 }

@@ -21,6 +21,12 @@ public class Regions: NSObject {
 
     public override init() {
         super.init()
+    }
+    
+    private var hasInitialized = false
+    private func ensureInitialized() {
+        guard !hasInitialized else { return }
+        hasInitialized = true
         loadRegions()
         loadPreferences()
     }
@@ -51,15 +57,41 @@ public class Regions: NSObject {
             allRegions = tempRegions
             loaded = true
         } else {
-            let defaultRegion = Region()
-            defaultRegion.position = 0
-            defaultRegion.identifier = "berlin"
-            defaultRegion.englishDescription = "Berlin"
-            defaultRegion.germanDescription = "Berlin"
-            defaultRegion.lat = NSNumber(value: 52.52)
-            defaultRegion.lon = NSNumber(value: 13.405)
-            allRegions = [defaultRegion]
-            loaded = true
+            let germanURL = Bundle.main.url(forResource: "constants", withExtension: "plist", subdirectory: nil, localization: "de")
+            let germanDict = (germanURL != nil ? NSDictionary(contentsOf: germanURL!) : nil) as? [String: Any]
+            let germanRegions = germanDict?["regions"] as? [String] ?? []
+
+            let englishURL = Bundle.main.url(forResource: "constants", withExtension: "plist", subdirectory: nil, localization: "Base") ?? Bundle.main.url(forResource: "constants", withExtension: "plist", subdirectory: nil, localization: "en")
+            let englishDict = (englishURL != nil ? NSDictionary(contentsOf: englishURL!) : nil) as? [String: Any]
+            let englishRegions = englishDict?["regions"] as? [String] ?? []
+            let localesArray = englishDict?["locales"] as? [String] ?? []
+
+            if !localesArray.isEmpty {
+                var tempRegions: [Region] = []
+                for i in 0..<localesArray.count {
+                    let reg = Region()
+                    reg.position = i
+                    reg.identifier = localesArray[i]
+                    if i == 2 {
+                        reg.identifier = "!\(reg.identifier)"
+                    }
+                    reg.englishDescription = i < englishRegions.count ? englishRegions[i] : localesArray[i]
+                    reg.germanDescription = i < germanRegions.count ? germanRegions[i] : localesArray[i]
+                    tempRegions.append(reg)
+                }
+                allRegions = tempRegions
+                loaded = true
+            } else {
+                let defaultRegion = Region()
+                defaultRegion.position = 0
+                defaultRegion.identifier = "berlin"
+                defaultRegion.englishDescription = "Berlin/Potsdam"
+                defaultRegion.germanDescription = "Berlin/Potsdam"
+                defaultRegion.lat = NSNumber(value: 52.52)
+                defaultRegion.lon = NSNumber(value: 13.405)
+                allRegions = [defaultRegion]
+                loaded = true
+            }
         }
 
         closestsRegions.removeAllObjects()
@@ -89,10 +121,12 @@ public class Regions: NSObject {
     }
 
     public func regionTextsSorted() -> [String] {
-        closestsRegions.compactMap { ($0 as? Region)?.localizedDescription }
+        ensureInitialized()
+        return allRegions.compactMap { $0.localizedDescription }
     }
 
     public func computeClosestsRegions(_ location: CLLocation?) {
+        ensureInitialized()
         guard let location else { return }
         let sorted = allRegions.sorted { r1, r2 in
             r1.distanceFrom(location) < r2.distanceFrom(location)
@@ -104,6 +138,7 @@ public class Regions: NSObject {
     }
 
     public func selectedIsOneOfThe3ClosestsRegions() -> Bool {
+        ensureInitialized()
         let count = min(3, closestsRegions.count)
         for i in 0..<count {
             if let reg = closestsRegions[i] as? Region, reg.position == regionId {
@@ -114,6 +149,7 @@ public class Regions: NSObject {
     }
 
     public func indexForRegionId() -> Int {
+        ensureInitialized()
         for (index, reg) in allRegions.enumerated() {
             if reg.position == regionId {
                 return index
@@ -123,6 +159,7 @@ public class Regions: NSObject {
     }
 
     public func selectIdSorted(_ id: Int) {
+        ensureInitialized()
         if id >= 0, id < allRegions.count, let reg = closestsRegions[id] as? Region {
             regionId = reg.position
             savePreferences()
@@ -130,11 +167,13 @@ public class Regions: NSObject {
     }
 
     public func selectPosition(_ position: Int) {
+        ensureInitialized()
         regionId = position
         savePreferences()
     }
 
     public func currentRegion() -> Region? {
+        ensureInitialized()
         for reg in allRegions {
             if reg.position == regionId {
                 return reg

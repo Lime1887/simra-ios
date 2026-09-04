@@ -2,32 +2,21 @@
 //  SimRaWidgetState.swift
 //  SimRa
 //
-//  Created by Emil Pauls on 02.09.26.
-//  Copyright © 2026 Mobile Cloud Computing an der Fakultät IV (Elektrotechnik und Informatik) der TU Berlin. All rights reserved.
+//  Shared state between the SimRa app and Widget Extension.
 //
 
-
-//
-//  RecordingAppIntents.swift
-//  SimRa
-//
-//  Created by Emil Pauls on 27.08.26.
-//  Copyright © 2026 Mobile Cloud Computing an der Fakultät IV
-//  (Elektrotechnik und Informatik) der TU Berlin. All rights reserved.
-//
-
-import AppIntents
 import Foundation
-import WidgetKit
-
-// MARK: - Shared Widget State
 
 enum SimRaWidgetState {
+
+    // MARK: - App Group
 
     static let suiteName =
         "group.de.tu-berlin.mcc.simra"
 
-    static let isRecording =
+    // MARK: - Keys
+
+    private static let isRecordingKey =
         "isRecording"
 
     static let startDate =
@@ -42,312 +31,138 @@ enum SimRaWidgetState {
     static let incidents =
         "incidents"
 
-    static func defaults() ->
-        UserDefaults?
-    {
+    // MARK: - Shared Defaults
+
+    static var defaults: UserDefaults? {
         UserDefaults(
-            suiteName:
-                suiteName
-        )
-    }
-}
-
-// MARK: - Start Recording Intent
-
-struct StartSimRaRecordingIntent:
-    AppIntent,
-    Sendable
-{
-
-    static var title: LocalizedStringResource {
-        "Start SimRa Recording"
-    }
-
-    static var description:
-        IntentDescription?
-    {
-        IntentDescription(
-            "Starts a new SimRa recording."
+            suiteName: suiteName
         )
     }
 
-    static var openAppWhenRun: Bool {
-        true
+    // MARK: - Read
+
+    static var isRecording: Bool {
+        defaults?.bool(
+            forKey: isRecordingKey
+        ) ?? false
     }
 
-    func perform()
-        async throws
-        -> some IntentResult
-    {
-        let success =
-            AppDelegate
-                .shared()
-                .startRecordingRequested()
-
-        guard success else {
-
-            throw StartRecordingIntentError
-                .failed
-        }
-
-        await MainActor.run {
-
-            RecordingAppIntentSynchronizer
-                .syncRecordingState()
-
-        }
-
-        return .result()
-    }
-}
-
-// MARK: - Stop Recording Intent
-
-struct StopSimRaRecordingIntent:
-    AppIntent,
-    Sendable
-{
-
-    static var title:
-        LocalizedStringResource
-    {
-        "Stop SimRa Recording"
-    }
-
-    static var description:
-        IntentDescription?
-    {
-        IntentDescription(
-            "Stops the current SimRa recording."
-        )
-    }
-
-    static var openAppWhenRun: Bool {
-        true
-    }
-
-    func perform()
-        async throws
-        -> some IntentResult
-    {
-        let success =
-            AppDelegate
-                .shared()
-                .stopRecordingRequested()
-
-        guard success else {
-
-            throw StopRecordingIntentError
-                .failed
-        }
-
-        await MainActor.run {
-
-            RecordingAppIntentSynchronizer
-                .syncRecordingState()
-
-        }
-
-        return .result()
-    }
-}
-
-// MARK: - Incident Intent
-
-struct MarkSimRaIncidentIntent:
-    AppIntent,
-    Sendable
-{
-
-    static var title:
-        LocalizedStringResource
-    {
-        "Mark SimRa Incident"
-    }
-
-    static var description:
-        IntentDescription?
-    {
-        IntentDescription(
-            "Marks an incident during the active SimRa recording."
-        )
-    }
-
-    static var openAppWhenRun: Bool {
-        true
-    }
-
-    func perform()
-        async throws
-        -> some IntentResult
-    {
-        let trip =
-            AppDelegate
-                .shared()
-                .activeTrip
-
+    static var recordingStartDate: Date? {
         guard
-            let activeTrip = trip,
-            let tripLocation =
-                activeTrip.tripLocations.lastObject
-                as? TripLocation
+            let timestamp = defaults?.object(
+                forKey: startDate
+            ) as? Double,
+            timestamp > 0
         else {
-
-            throw MarkIncidentIntentError
-                .failed
+            return nil
         }
 
-        let annotation =
-            TripAnnotation()
-
-        annotation.incidentId = 0
-        annotation.comment =
-            "Marked from SimRa widget"
-
-        tripLocation.tripAnnotation =
-            annotation
-
-        NotificationCenter.default.post(
-            name:
-                .incidentMarked,
-            object:
-                nil
+        return Date(
+            timeIntervalSince1970: timestamp
         )
-
-        return .result()
     }
-}
 
-// MARK: - Synchronizer
+    static var elapsed: Int {
+        max(
+            defaults?.integer(
+                forKey: elapsedSeconds
+            ) ?? 0,
+            0
+        )
+    }
 
-@MainActor
-enum RecordingAppIntentSynchronizer {
+    static var distance: Int {
+        max(
+            defaults?.integer(
+                forKey: distanceMeters
+            ) ?? 0,
+            0
+        )
+    }
 
-    static func syncRecordingState() {
+    static var incidentCount: Int {
+        max(
+            defaults?.integer(
+                forKey: incidents
+            ) ?? 0,
+            0
+        )
+    }
 
-        let appDelegate =
-            AppDelegate.shared()
+    // MARK: - Write Recording State
 
-        let activeTrip =
-            appDelegate.activeTrip
-
-        let isRecording =
-            activeTrip != nil
-
-        let startDate =
-            activeTrip?.recordingStartDate
-
-        guard let defaults =
-            SimRaWidgetState.defaults()
+    static func setRecording(
+        _ recording: Bool,
+        startDate: Date?
+    ) {
+        guard
+            let defaults
         else {
             return
         }
 
         defaults.set(
-            isRecording,
-            forKey:
-                SimRaWidgetState.isRecording
+            recording,
+            forKey: self.isRecordingKey
         )
 
-        if
-            isRecording,
-            let startDate
+        if recording,
+           let startDate
         {
-
             defaults.set(
                 startDate.timeIntervalSince1970,
-                forKey:
-                    SimRaWidgetState.startDate
+                forKey: self.startDate
             )
-
         } else {
-
             defaults.removeObject(
-                forKey:
-                    SimRaWidgetState.startDate
+                forKey: self.startDate
             )
         }
 
-        let elapsedSeconds: Int
+        if !recording {
+            defaults.set(
+                0,
+                forKey: elapsedSeconds
+            )
 
-        if let startDate {
+            defaults.set(
+                0,
+                forKey: distanceMeters
+            )
 
-            elapsedSeconds =
-                max(
-                    0,
-                    Int(
-                        Date()
-                            .timeIntervalSince(
-                                startDate
-                            )
-                            .rounded()
-                    )
-                )
+            defaults.set(
+                0,
+                forKey: incidents
+            )
+        }
+    }
 
-        } else {
+    // MARK: - Write Metrics
 
-            elapsedSeconds = 0
+    static func setMetrics(
+        elapsedSeconds: Int,
+        distanceMeters: Int,
+        incidents: Int
+    ) {
+        guard
+            let defaults
+        else {
+            return
         }
 
         defaults.set(
-            elapsedSeconds,
-            forKey:
-                SimRaWidgetState.elapsedSeconds
+            max(elapsedSeconds, 0),
+            forKey: self.elapsedSeconds
         )
 
-        if !isRecording {
-
-            defaults.set(
-                0,
-                forKey:
-                    SimRaWidgetState.distanceMeters
-            )
-
-            defaults.set(
-                0,
-                forKey:
-                    SimRaWidgetState.incidents
-            )
-        }
-
-        WidgetCenter.shared.reloadTimelines(
-            ofKind:
-                "SimRaRecordingWidget"
+        defaults.set(
+            max(distanceMeters, 0),
+            forKey: self.distanceMeters
         )
-    }
-}
 
-// MARK: - Errors
-
-enum StartRecordingIntentError:
-    Error,
-    LocalizedError
-{
-    case failed
-
-    var errorDescription: String? {
-        "SimRa could not start the recording."
-    }
-}
-
-enum StopRecordingIntentError:
-    Error,
-    LocalizedError
-{
-    case failed
-
-    var errorDescription: String? {
-        "SimRa could not stop the recording."
-    }
-}
-
-enum MarkIncidentIntentError:
-    Error,
-    LocalizedError
-{
-    case failed
-
-    var errorDescription: String? {
-        "No active SimRa recording was found."
+        defaults.set(
+            max(incidents, 0),
+            forKey: self.incidents
+        )
     }
 }

@@ -1,6 +1,6 @@
 //
 //  SimRaLiveActivity.swift
-//  SimRa
+//  SimRa Widgets
 //
 //  Created by Emil Pauls on 26.08.26.
 //  Copyright © 2026 Mobile Cloud Computing an der Fakultät IV
@@ -15,112 +15,90 @@ import WidgetKit
 struct SimRaLiveActivity: Widget {
 
     var body: some WidgetConfiguration {
-
         ActivityConfiguration(
             for: SimRaRecordingAttributes.self
         ) { context in
 
-            HStack(spacing: 16) {
+            // MARK: - Lock Screen
 
-                Image(systemName: "bicycle")
-                    .font(.title2.weight(.semibold))
-                    .foregroundStyle(.tint)
-
-                VStack(alignment: .leading, spacing: 3) {
-
-                    Text("SimRa")
-                        .font(.headline.weight(.semibold))
-
-                    HStack(spacing: 16) {
-
-                        Text(
-                            formatElapsed(
-                                context.state.elapsedSeconds
-                            )
-                        )
-                        .font(.title3.weight(.semibold))
-                        .monospacedDigit()
-
-                        Text(
-                            formatDistance(
-                                context.state.distanceMeters
-                            )
-                        )
-                        .font(.title3.weight(.semibold))
-                        .monospacedDigit()
-                    }
-                }
-
-                Spacer(minLength: 8)
-
-                Link(destination: stopRecordingURL) {
-                    Image(systemName: "stop.fill")
-                        .font(.headline.weight(.semibold))
-                        .frame(width: 42, height: 42)
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(.red)
-                .background(
-                    .red.opacity(0.12),
-                    in: Circle()
-                )
-            }
-            .padding()
-            .activityBackgroundTint(.clear)
+            LockScreenLiveActivityView(
+                attributes: context.attributes,
+                state: context.state
+            )
             .activitySystemActionForegroundColor(.primary)
 
         } dynamicIsland: { context in
 
             DynamicIsland {
 
-                DynamicIslandExpandedRegion(.leading) {
+                // MARK: - Expanded Leading
 
-                    VStack(alignment: .leading, spacing: 3) {
-
-                        Image(systemName: "bicycle")
-                            .font(.title2.weight(.semibold))
-                            .foregroundStyle(.tint)
+                DynamicIslandExpandedRegion(
+                    .leading
+                ) {
+                    VStack(
+                        alignment: .leading,
+                        spacing: 2
+                    ) {
+                        Image(
+                            systemName: "bicycle"
+                        )
+                        .font(
+                            .title3.weight(.semibold)
+                        )
+                        .foregroundStyle(.tint)
 
                         Text("SimRa")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .font(
+                                .caption.weight(.semibold)
+                            )
                     }
                 }
 
-                DynamicIslandExpandedRegion(.trailing) {
+                // MARK: - Expanded Trailing
 
-                    VStack(alignment: .trailing, spacing: 3) {
-
-                        Text(
-                            formatElapsed(
-                                context.state.elapsedSeconds
-                            )
+                DynamicIslandExpandedRegion(
+                    .trailing
+                ) {
+                    VStack(
+                        alignment: .trailing,
+                        spacing: 2
+                    ) {
+                        LiveTimer(
+                            startDate:
+                                context.attributes.startDate
                         )
-                        .font(.title3.weight(.semibold))
-                        .monospacedDigit()
 
                         Text(
                             formatDistance(
                                 context.state.distanceMeters
                             )
                         )
-                        .font(.caption)
+                        .font(
+                            .caption.weight(.medium)
+                        )
                         .foregroundStyle(.secondary)
                         .monospacedDigit()
                     }
                 }
 
-                DynamicIslandExpandedRegion(.bottom) {
+                // MARK: - Expanded Bottom
 
-                    HStack(spacing: 12) {
+                DynamicIslandExpandedRegion(
+                    .bottom
+                ) {
+                    HStack(
+                        spacing: 10
+                    ) {
 
                         VStack(
                             alignment: .leading,
                             spacing: 2
                         ) {
-
-                            Text("Aufnahme")
-                                .font(.caption)
+                            Text("SimRa")
+                                .font(
+                                    .caption.weight(.medium)
+                                )
                                 .foregroundStyle(.secondary)
 
                             Text(
@@ -128,86 +106,270 @@ struct SimRaLiveActivity: Widget {
                                     context.state.distanceMeters
                                 )
                             )
-                            .font(.headline.weight(.semibold))
+                            .font(
+                                .headline.weight(.semibold)
+                            )
                             .monospacedDigit()
                         }
 
                         Spacer()
 
-                        Link(destination: stopRecordingURL) {
+                        Link(
+                            destination:
+                                markIncidentURL
+                        ) {
                             Label(
-                                "Stop",
-                                systemImage: "stop.fill"
+                                "Gefahr",
+                                systemImage:
+                                    "exclamationmark.triangle.fill"
                             )
                             .font(
-                                .subheadline.weight(.semibold)
+                                .caption.weight(
+                                    .semibold
+                                )
                             )
-                            .frame(minWidth: 74)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .buttonBorderShape(
+                            .capsule
+                        )
+                        .tint(.orange)
+
+                        Link(
+                            destination:
+                                stopRecordingURL
+                        ) {
+                            Label(
+                                "Stop",
+                                systemImage:
+                                    "stop.fill"
+                            )
+                            .font(
+                                .caption.weight(
+                                    .semibold
+                                )
+                            )
                         }
                         .buttonStyle(.bordered)
-                        .buttonBorderShape(.capsule)
+                        .buttonBorderShape(
+                            .capsule
+                        )
                         .tint(.red)
                     }
                 }
 
             } compactLeading: {
 
-                Image(systemName: "bicycle")
+                Image(
+                    systemName: "bicycle"
+                )
+                .foregroundStyle(.tint)
 
             } compactTrailing: {
 
-                Text(
-                    formatElapsed(
-                        context.state.elapsedSeconds
+                LiveTimer(
+                    startDate:
+                        context.attributes.startDate
+                )
+                .font(
+                    .caption2.weight(
+                        .semibold
                     )
                 )
-                .font(.caption2.weight(.semibold))
                 .monospacedDigit()
 
             } minimal: {
 
-                Image(systemName: "bicycle")
+                Image(
+                    systemName: "bicycle"
+                )
+                .foregroundStyle(.tint)
             }
         }
     }
 }
 
+// MARK: - Lock Screen
+
 @available(iOS 16.2, *)
-private func formatElapsed(
-    _ seconds: Int
-) -> String {
+private struct LockScreenLiveActivityView: View {
 
-    let hours = seconds / 3600
-    let minutes = (seconds % 3600) / 60
-    let remainingSeconds = seconds % 60
+    let attributes:
+        SimRaRecordingAttributes
 
-    if hours > 0 {
-        return String(
-            format: "%d:%02d:%02d",
-            hours,
-            minutes,
-            remainingSeconds
+    let state:
+        SimRaRecordingAttributes.ContentState
+
+    var body: some View {
+        HStack(
+            spacing: 12
+        ) {
+
+            Image(
+                systemName: "bicycle"
+            )
+            .font(
+                .title2.weight(
+                    .semibold
+                )
+            )
+            .foregroundStyle(.tint)
+
+            VStack(
+                alignment: .leading,
+                spacing: 2
+            ) {
+
+                Text("SimRa")
+                    .font(
+                        .headline.weight(
+                            .semibold
+                        )
+                    )
+
+                HStack(
+                    spacing: 10
+                ) {
+
+                    LiveTimer(
+                        startDate:
+                            attributes.startDate
+                    )
+
+                    Text(
+                        formatDistance(
+                            state.distanceMeters
+                        )
+                    )
+                    .monospacedDigit()
+                }
+                .font(
+                    .subheadline.weight(
+                        .semibold
+                    )
+                )
+
+                if state.incidents > 0 {
+                    Text("\(state.incidents) Gefahr(en) erfasst")
+                        .font(.caption2.weight(.medium))
+                        .foregroundStyle(.orange)
+                }
+            }
+
+            Spacer(
+                minLength: 4
+            )
+
+            Link(
+                destination:
+                    markIncidentURL
+            ) {
+                Image(
+                    systemName: "exclamationmark.triangle.fill"
+                )
+                .font(
+                    .body.weight(
+                        .semibold
+                    )
+                )
+                .foregroundStyle(
+                    .white
+                )
+                .frame(
+                    width: 38,
+                    height: 38
+                )
+                .background(
+                    .orange,
+                    in: Circle()
+                )
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(
+                "Gefahr erfassen"
+            )
+
+            Link(
+                destination:
+                    stopRecordingURL
+            ) {
+                Image(
+                    systemName: "stop.fill"
+                )
+                .font(
+                    .body.weight(
+                        .semibold
+                    )
+                )
+                .foregroundStyle(
+                    .red
+                )
+                .frame(
+                    width: 38,
+                    height: 38
+                )
+                .background(
+                    .red.opacity(
+                        0.15
+                    ),
+                    in: Circle()
+                )
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(
+                "Stop recording"
+            )
+        }
+        .padding(
+            .horizontal,
+            16
+        )
+        .padding(
+            .vertical,
+            12
+        )
+        .activityBackgroundTint(
+            .clear
         )
     }
-
-    return String(
-        format: "%02d:%02d",
-        minutes,
-        remainingSeconds
-    )
 }
 
+// MARK: - Live Timer
+
 @available(iOS 16.2, *)
+private struct LiveTimer: View {
+
+    let startDate: Date
+
+    var body: some View {
+        Text(
+            timerInterval:
+                startDate...Date.distantFuture,
+            countsDown: false,
+            showsHours: true
+        )
+        .monospacedDigit()
+    }
+}
+
+// MARK: - Formatting
+
 private func formatDistance(
     _ meters: Int
 ) -> String {
 
-    let kilometers = Double(meters) / 1000
+    let value = max(
+        meters,
+        0
+    )
+
+    let kilometers =
+        Double(value) / 1000.0
 
     if kilometers < 1 {
         return String(
             format: "%.0f m",
-            Double(meters)
+            Double(value)
         )
     }
 
@@ -224,28 +386,16 @@ private func formatDistance(
     )
 }
 
-private let stopRecordingURL = URL(string: "simra://recording/stop")!
+// MARK: - URLs
 
-#Preview(
-    "SimRa Recording",
-    as: .content,
-    using: SimRaRecordingAttributes(
-        tripId: 1,
-        bikeTypeId: 1
-    )
-) {
-    SimRaLiveActivity()
-} contentStates: {
+private let stopRecordingURL =
+    URL(
+        string:
+            "simra://recording/stop"
+    )!
 
-    SimRaRecordingAttributes.ContentState(
-        elapsedSeconds: 120,
-        distanceMeters: 340,
-        incidents: 0
-    )
-
-    SimRaRecordingAttributes.ContentState(
-        elapsedSeconds: 768,
-        distanceMeters: 2700,
-        incidents: 2
-    )
-}
+private let markIncidentURL =
+    URL(
+        string:
+            "simra://incident/mark?type=0"
+    )!

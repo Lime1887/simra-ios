@@ -8,7 +8,6 @@
 
 #import "TripDetailTVC.h"
 #import "IdPicker.h"
-#import "AppDelegate.h"
 
 @interface TripDetailTVC ()
 @property (weak, nonatomic) IBOutlet IdPicker *bikeType;

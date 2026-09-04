@@ -1,243 +1,958 @@
 //
-//  SimRaWidgetBundle 2.swift
-//  SimRa
+//  SimRaRecordingWidget.swift
+//  SimRa Widgets
 //
-//  Created by Emil Pauls on 25.08.26.
-//  Copyright © 2026 Mobile Cloud Computing an der Fakultät IV (Elektrotechnik und Informatik) der TU Berlin. All rights reserved.
+//  Created by Emil Pauls on 26.08.26.
+//  Copyright © 2026 Mobile Cloud Computing an der Fakultät IV
+//  (Elektrotechnik und Informatik) der TU Berlin. All rights reserved.
 //
-
 
 import SwiftUI
 import WidgetKit
-import ActivityKit
+
+// MARK: - Timeline Entry
+
+struct SimRaRecordingEntry: TimelineEntry {
+
+    let date: Date
+    let isRecording: Bool
+    let elapsedSeconds: Int
+    let distanceMeters: Int
+    let incidents: Int
+    let totalRides: Int
+    let totalDistanceMeters: Int
+}
+
+// MARK: - Timeline Provider
+
+struct SimRaRecordingProvider: TimelineProvider {
+
+    private enum StateKey {
+        static let suiteName =
+            "group.de.tu-berlin.mcc.simra"
+
+        static let isRecording =
+            "isRecording"
+
+        static let elapsedSeconds =
+            "elapsedSeconds"
+
+        static let distanceMeters =
+            "distanceMeters"
+
+        static let incidents =
+            "incidents"
+
+        static let totalRides =
+            "totalRides"
+
+        static let totalDistanceMeters =
+            "totalDistanceMeters"
+    }
+
+    // MARK: Placeholder
+
+    func placeholder(
+        in context: Context
+    ) -> SimRaRecordingEntry {
+
+        SimRaRecordingEntry(
+            date: .now,
+            isRecording: false,
+            elapsedSeconds: 0,
+            distanceMeters: 0,
+            incidents: 0,
+            totalRides: 0,
+            totalDistanceMeters: 0
+        )
+    }
+
+    // MARK: Snapshot
+
+    func getSnapshot(
+        in context: Context,
+        completion: @escaping (
+            SimRaRecordingEntry
+        ) -> Void
+    ) {
+
+        completion(
+            currentEntry()
+        )
+    }
+
+    // MARK: Timeline
+
+    func getTimeline(
+        in context: Context,
+        completion: @escaping (
+            Timeline<SimRaRecordingEntry>
+        ) -> Void
+    ) {
+
+        /*
+         * The app explicitly requests a reload through
+         * WidgetCenter when the recording state changes.
+         *
+         * Therefore the widget doesn't need an artificial
+         * 5-second timeline.
+         */
+        completion(
+            Timeline(
+                entries: [
+                    currentEntry()
+                ],
+                policy: .never
+            )
+        )
+    }
+
+    // MARK: Current Entry
+
+    private func currentEntry()
+        -> SimRaRecordingEntry
+    {
+
+        let defaults =
+            UserDefaults(
+                suiteName:
+                    StateKey.suiteName
+            ) ?? UserDefaults.standard
+
+        return SimRaRecordingEntry(
+            date: .now,
+
+            isRecording:
+                defaults.bool(
+                    forKey:
+                        StateKey.isRecording
+                ),
+
+            elapsedSeconds:
+                max(
+                    defaults.integer(
+                        forKey:
+                            StateKey.elapsedSeconds
+                    ),
+                    0
+                ),
+
+            distanceMeters:
+                max(
+                    defaults.integer(
+                        forKey:
+                            StateKey.distanceMeters
+                    ),
+                    0
+                ),
+
+            incidents:
+                max(
+                    defaults.integer(
+                        forKey:
+                            StateKey.incidents
+                    ),
+                    0
+                ),
+
+            totalRides:
+                max(
+                    defaults.integer(
+                        forKey:
+                            StateKey.totalRides
+                    ),
+                    0
+                ),
+
+            totalDistanceMeters:
+                max(
+                    defaults.integer(
+                        forKey:
+                            StateKey.totalDistanceMeters
+                    ),
+                    0
+                )
+        )
+    }
+}
+
+// MARK: - Widget
 
 @available(iOS 16.2, *)
-struct SimRaLiveActivity: Widget {
+public struct SimRaRecordingWidget: Widget {
 
-    var body: some WidgetConfiguration {
+    public static let kind =
+        "SimRaRecordingWidget"
 
-        ActivityConfiguration(
-            for: SimRaRecordingAttributes.self
-        ) { context in
+    public init() {}
 
-            // MARK: Lock Screen / Banner
+    public var body:
+        some WidgetConfiguration
+    {
 
-            VStack(alignment: .leading, spacing: 12) {
+        StaticConfiguration(
+            kind:
+                Self.kind,
+            provider:
+                SimRaRecordingProvider()
+        ) { entry in
 
-                HStack(spacing: 14) {
+            SimRaRecordingWidgetView(
+                entry: entry
+            )
+        }
+        .configurationDisplayName(
+            "SimRa"
+        )
+        .description(
+            "Start or continue a SimRa recording."
+        )
+        .supportedFamilies([
+            .systemSmall,
+            .systemMedium
+        ])
+    }
+}
 
-                    Image(systemName: "bicycle")
-                        .font(.title2)
-                        .foregroundStyle(.tint)
+// MARK: - Root Widget View
 
-                    VStack(alignment: .leading, spacing: 5) {
+@available(iOS 16.2, *)
+private struct SimRaRecordingWidgetView:
+    View {
 
-                        Text("SimRa")
-                            .font(.headline)
+    let entry:
+        SimRaRecordingEntry
 
-                        HStack(spacing: 14) {
+    @Environment(\.widgetFamily)
+    private var family
 
-                            Label {
-                                Text(
-                                    formatElapsed(
-                                        context.state.elapsedSeconds
-                                    )
-                                )
-                                .monospacedDigit()
-                            } icon: {
-                                Image(systemName: "timer")
-                            }
+    var body: some View {
 
-                            Label {
-                                Text(
-                                    formatDistance(
-                                        context.state.distanceMeters
-                                    )
-                                )
-                                .monospacedDigit()
-                            } icon: {
-                                Image(systemName: "location")
-                            }
-                        }
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                    }
+        if #available(iOS 17.0, *) {
 
-                    Spacer(minLength: 0)
+            content
+                .containerBackground(
+                    for: .widget
+                ) {
+                    Color.clear
                 }
 
-                if #available(iOS 17.0, *) {
-                    Button(intent: StopRecordingIntent()) {
-                        Label("Stop recording", systemImage: "stop.fill")
-                            .frame(maxWidth: .infinity)
-                    }
-                    .padding(.vertical, 11)
-                    .padding(.horizontal, 14)
-                    .background(
-                        .red.opacity(0.12),
-                        in: Capsule()
-                    )
-                    .overlay(
-                        Capsule()
-                            .stroke(.red.opacity(0.34), lineWidth: 1)
-                    )
-                    .foregroundStyle(.red)
-                    .buttonStyle(.plain)
-                }
-            }
-            .padding()
-            .activityBackgroundTint(.clear)
-            .activitySystemActionForegroundColor(.primary)
+        } else {
 
-        } dynamicIsland: { context in
+            content
+        }
+    }
 
-            DynamicIsland {
+    @ViewBuilder
+    private var content:
+        some View
+    {
 
-                // MARK: Expanded Leading
+        switch family {
 
-                DynamicIslandExpandedRegion(.leading) {
+        case .systemSmall:
+            SmallWidgetView(
+                entry: entry
+            )
 
-                    VStack(alignment: .leading, spacing: 4) {
+        case .systemMedium:
+            MediumWidgetView(
+                entry: entry
+            )
 
-                        Image(systemName: "bicycle")
-                            .font(.title2)
-                            .foregroundStyle(.tint)
+        default:
+            SmallWidgetView(
+                entry: entry
+            )
+        }
+    }
+}
 
-                        Text("SimRa")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
+// MARK: - Small Widget
 
-                // MARK: Expanded Trailing
+@available(iOS 16.2, *)
+private struct SmallWidgetView:
+    View {
 
-                DynamicIslandExpandedRegion(.trailing) {
+    let entry:
+        SimRaRecordingEntry
 
-                    VStack(alignment: .trailing, spacing: 4) {
+    private var accent:
+        Color
+    {
+        entry.isRecording
+            ? .red
+            : .green
+    }
 
-                        Text(
-                            formatElapsed(
-                                context.state.elapsedSeconds
-                            )
-                        )
-                        .font(.headline)
-                        .monospacedDigit()
+    var body: some View {
 
-                        Text(
-                            formatDistance(
-                                context.state.distanceMeters
-                            )
-                        )
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .monospacedDigit()
-                    }
-                }
+        VStack(
+            alignment: .leading,
+            spacing: 0
+        ) {
 
-                // MARK: Expanded Center
+            // MARK: Header
 
-                DynamicIslandExpandedRegion(.center) {
+            HStack(
+                spacing: 7
+            ) {
 
-                    VStack(spacing: 2) {
-
-                        Text("Aufnahme")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-
-                        Text(
-                            formatElapsed(
-                                context.state.elapsedSeconds
-                            )
-                        )
-                        .font(.title3)
-                        .fontWeight(.semibold)
-                        .monospacedDigit()
-                    }
-                }
-
-                // MARK: Expanded Bottom
-
-                DynamicIslandExpandedRegion(.bottom) {
-                    VStack(alignment: .leading, spacing: 10) {
-
-                        HStack {
-
-                            Label {
-                                Text(
-                                    formatDistance(
-                                        context.state.distanceMeters
-                                    )
-                                )
-                                .monospacedDigit()
-                            } icon: {
-                                Image(systemName: "location")
-                            }
-
-                            Spacer()
-
-                            Label(
-                                "SimRa",
-                                systemImage: "bicycle"
-                            )
-                        }
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-
-                        if #available(iOS 17.0, *) {
-                            Button(intent: StopRecordingIntent()) {
-                                Label("Stop", systemImage: "stop.fill")
-                                    .frame(maxWidth: .infinity)
-                            }
-                            .padding(.vertical, 10)
-                            .padding(.horizontal, 12)
-                            .background(
-                                .red.opacity(0.12),
-                                in: Capsule()
-                            )
-                            .overlay(
-                                Capsule()
-                                    .stroke(.red.opacity(0.34), lineWidth: 1)
-                            )
-                            .foregroundStyle(.red)
-                            .buttonStyle(.plain)
-                        }
-                    }
-                }
-
-            } compactLeading: {
-
-                Image(systemName: "bicycle")
-
-            } compactTrailing: {
-
-                Text(
-                    formatElapsed(
-                        context.state.elapsedSeconds
+                Image(
+                    systemName:
+                        "bicycle"
+                )
+                .font(
+                    .system(
+                        size: 16,
+                        weight: .semibold
                     )
                 )
-                .monospacedDigit()
-                .font(.caption2)
+                .foregroundStyle(
+                    accent
+                )
 
-            } minimal: {
+                Text("SimRa")
+                    .font(
+                        .headline.weight(
+                            .semibold
+                        )
+                    )
 
-                Image(systemName: "bicycle")
+                Spacer()
             }
+
+            Spacer(
+                minLength: 8
+            )
+
+            // MARK: Content
+
+            if entry.isRecording {
+
+                recordingContent
+
+            } else {
+
+                readyContent
+            }
+        }
+        .padding(16)
+    }
+
+    // MARK: Recording Content
+
+    private var recordingContent:
+        some View
+    {
+
+        VStack(
+            alignment: .leading,
+            spacing: 7
+        ) {
+
+            Text(
+                NSLocalizedString(
+                    "Recording",
+                    comment:
+                        "Recording state"
+                )
+            )
+            .font(
+                .caption.weight(
+                    .medium
+                )
+            )
+            .foregroundStyle(
+                .secondary
+            )
+
+            Text(
+                formatTime(
+                    entry.elapsedSeconds
+                )
+            )
+            .font(
+                .system(
+                    size: 30,
+                    weight: .bold,
+                    design: .rounded
+                )
+            )
+            .monospacedDigit()
+
+            Text(
+                formatDistance(
+                    entry.distanceMeters
+                )
+            )
+            .font(
+                .subheadline.weight(
+                    .medium
+                )
+            )
+            .foregroundStyle(
+                .secondary
+            )
+
+            if entry.incidents > 0 {
+
+                Text(
+                    "\(entry.incidents) " +
+                    NSLocalizedString(
+                        "incidents",
+                        comment:
+                            "Incident count"
+                    )
+                )
+                .font(
+                    .caption
+                )
+                .foregroundStyle(
+                    .orange
+                )
+            }
+
+            Spacer(
+                minLength: 7
+            )
+
+            HStack(spacing: 8) {
+                Link(
+                    destination:
+                        markIncidentURL
+                ) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(
+                            .subheadline.weight(
+                                .semibold
+                            )
+                        )
+                        .frame(
+                            maxWidth:
+                                .infinity
+                        )
+                        .frame(height: 32)
+                }
+                .buttonStyle(
+                    .borderedProminent
+                )
+                .buttonBorderShape(
+                    .capsule
+                )
+                .tint(.orange)
+                .accessibilityLabel("Gefahr erfassen")
+
+                Link(
+                    destination:
+                        stopRecordingURL
+                ) {
+                    Image(systemName: "stop.fill")
+                        .font(
+                            .subheadline.weight(
+                                .semibold
+                            )
+                        )
+                        .frame(
+                            maxWidth:
+                                .infinity
+                        )
+                        .frame(height: 32)
+                }
+                .buttonStyle(
+                    .borderedProminent
+                )
+                .buttonBorderShape(
+                    .capsule
+                )
+                .tint(.red)
+                .accessibilityLabel("Stop recording")
+            }
+        }
+    }
+
+    // MARK: Ready Content
+
+    private var readyContent:
+        some View
+    {
+
+        VStack(
+            alignment: .leading,
+            spacing: 9
+        ) {
+
+            Text(
+                NSLocalizedString(
+                    "Ready",
+                    comment:
+                        "Ready to record"
+                )
+            )
+            .font(
+                .title3.weight(
+                    .semibold
+                )
+            )
+
+            Text(
+                NSLocalizedString(
+                    "Start a new ride",
+                    comment:
+                        "Start a new ride"
+                )
+            )
+            .font(
+                .caption
+            )
+            .foregroundStyle(
+                .secondary
+            )
+
+            Spacer(
+                minLength: 4
+            )
+
+            Link(
+                destination:
+                    startRecordingURL
+            ) {
+
+                Label(
+                    NSLocalizedString(
+                        "Start",
+                        comment:
+                            "Start recording"
+                    ),
+                    systemImage:
+                        "record.circle"
+                )
+                .font(
+                    .subheadline.weight(
+                        .semibold
+                    )
+                )
+                .frame(
+                    maxWidth:
+                        .infinity
+                )
+            }
+            .buttonStyle(
+                .borderedProminent
+            )
+            .buttonBorderShape(
+                .capsule
+            )
+            .tint(.green)
+        }
+    }
+}
+
+// MARK: - Medium Widget
+
+@available(iOS 16.2, *)
+private struct MediumWidgetView:
+    View {
+
+    let entry:
+        SimRaRecordingEntry
+
+    private var accent:
+        Color
+    {
+        entry.isRecording
+            ? .red
+            : .green
+    }
+
+    var body: some View {
+
+        HStack(
+            spacing: 20
+        ) {
+
+            VStack(
+                alignment: .leading,
+                spacing: 0
+            ) {
+
+                // MARK: Header
+
+                HStack(
+                    spacing: 7
+                ) {
+
+                    Image(
+                        systemName:
+                            "bicycle"
+                    )
+                    .font(
+                        .system(
+                            size: 16,
+                            weight: .semibold
+                        )
+                    )
+                    .foregroundStyle(
+                        accent
+                    )
+
+                    Text("SimRa")
+                        .font(
+                            .headline.weight(
+                                .semibold
+                            )
+                        )
+                }
+
+                Spacer(
+                    minLength: 8
+                )
+
+                if entry.isRecording {
+
+                    recordingContent
+
+                } else {
+
+                    readyContent
+                }
+            }
+            .frame(
+                maxWidth:
+                    .infinity,
+                alignment:
+                    .leading
+            )
+
+            Divider()
+
+            // MARK: Statistics
+
+            VStack(
+                alignment: .leading,
+                spacing: 5
+            ) {
+
+                if entry.isRecording {
+
+                    Text(
+                        NSLocalizedString(
+                            "Distance",
+                            comment:
+                                "Distance"
+                        )
+                    )
+                    .font(
+                        .caption
+                    )
+                    .foregroundStyle(
+                        .secondary
+                    )
+
+                    Text(
+                        formatDistance(
+                            entry.distanceMeters
+                        )
+                    )
+                    .font(
+                        .title2.weight(
+                            .semibold
+                        )
+                    )
+                    .monospacedDigit()
+
+                    Text(
+                        formatTime(
+                            entry.elapsedSeconds
+                        )
+                    )
+                    .font(
+                        .caption
+                    )
+                    .foregroundStyle(
+                        .secondary
+                    )
+                    .monospacedDigit()
+
+                    if entry.incidents > 0 {
+
+                        Text(
+                            "\(entry.incidents) " +
+                            NSLocalizedString(
+                                "incidents",
+                                comment:
+                                    "Incident count"
+                            )
+                        )
+                        .font(
+                            .caption
+                        )
+                        .foregroundStyle(
+                            .orange
+                        )
+                    }
+
+                } else {
+
+                    Text(
+                        NSLocalizedString(
+                            "Gesamt",
+                            comment:
+                                "Total distance"
+                        )
+                    )
+                    .font(
+                        .caption
+                    )
+                    .foregroundStyle(
+                        .secondary
+                    )
+
+                    Text(
+                        formatDistance(
+                            entry.totalDistanceMeters
+                        )
+                    )
+                    .font(
+                        .title2.weight(
+                            .semibold
+                        )
+                    )
+                    .monospacedDigit()
+
+                    Text(
+                        entry.totalRides == 1
+                            ? "1 Fahrt"
+                            : "\(entry.totalRides) Fahrten"
+                    )
+                    .font(
+                        .caption
+                    )
+                    .foregroundStyle(
+                        .secondary
+                    )
+                }
+            }
+            .frame(
+                minWidth: 82,
+                alignment:
+                    .leading
+            )
+        }
+        .padding(18)
+    }
+
+    // MARK: Recording Content
+
+    private var recordingContent:
+        some View
+    {
+
+        VStack(
+            alignment: .leading,
+            spacing: 4
+        ) {
+
+            Text(
+                NSLocalizedString(
+                    "Recording",
+                    comment:
+                        "Recording state"
+                )
+            )
+            .font(
+                .subheadline.weight(
+                    .medium
+                )
+            )
+            .foregroundStyle(
+                .secondary
+            )
+
+            Text(
+                formatTime(
+                    entry.elapsedSeconds
+                )
+            )
+            .font(
+                .system(
+                    size: 28,
+                    weight: .bold,
+                    design: .rounded
+                )
+            )
+            .monospacedDigit()
+
+            Text(
+                formatDistance(
+                    entry.distanceMeters
+                )
+            )
+            .font(
+                .subheadline.weight(
+                    .medium
+                )
+            )
+            .foregroundStyle(
+                .secondary
+            )
+
+            Spacer(
+                minLength: 9
+            )
+
+            HStack(spacing: 8) {
+                Link(
+                    destination:
+                        markIncidentURL
+                ) {
+                    Label(
+                        "Gefahr",
+                        systemImage:
+                            "exclamationmark.triangle.fill"
+                    )
+                    .font(
+                        .caption.weight(
+                            .semibold
+                        )
+                    )
+                    .frame(
+                        maxWidth:
+                            .infinity
+                    )
+                }
+                .buttonStyle(
+                    .borderedProminent
+                )
+                .buttonBorderShape(
+                    .capsule
+                )
+                .tint(.orange)
+
+                Link(
+                    destination:
+                        stopRecordingURL
+                ) {
+                    Label(
+                        NSLocalizedString(
+                            "Stop",
+                            comment:
+                                "Stop recording"
+                        ),
+                        systemImage:
+                            "stop.fill"
+                    )
+                    .font(
+                        .caption.weight(
+                            .semibold
+                        )
+                    )
+                    .frame(
+                        maxWidth:
+                            .infinity
+                    )
+                }
+                .buttonStyle(
+                    .borderedProminent
+                )
+                .buttonBorderShape(
+                    .capsule
+                )
+                .tint(.red)
+            }
+        }
+    }
+
+    // MARK: Ready Content
+
+    private var readyContent:
+        some View
+    {
+
+        VStack(
+            alignment: .leading,
+            spacing: 7
+        ) {
+
+            Text(
+                NSLocalizedString(
+                    "Ready for your next ride",
+                    comment:
+                        "Ready for next ride"
+                )
+            )
+            .font(
+                .subheadline
+            )
+            .foregroundStyle(
+                .secondary
+            )
+
+            Spacer(
+                minLength: 8
+            )
+
+            Link(
+                destination:
+                    startRecordingURL
+            ) {
+
+                Label(
+                    NSLocalizedString(
+                        "Start recording",
+                        comment:
+                            "Start recording"
+                    ),
+                    systemImage:
+                        "record.circle"
+                )
+                .font(
+                    .subheadline.weight(
+                        .semibold
+                    )
+                )
+                .frame(
+                    maxWidth:
+                        .infinity
+                )
+            }
+            .buttonStyle(
+                .borderedProminent
+            )
+            .buttonBorderShape(
+                .capsule
+            )
+            .tint(.green)
         }
     }
 }
 
 // MARK: - Formatting
 
-@available(iOS 16.2, *)
-private func formatElapsed(_ seconds: Int) -> String {
+private func formatTime(
+    _ seconds: Int
+) -> String {
 
-    let hours = seconds / 3600
-    let minutes = (seconds % 3600) / 60
-    let remainingSeconds = seconds % 60
+    let safeSeconds =
+        max(
+            0,
+            seconds
+        )
+
+    let hours =
+        safeSeconds / 3600
+
+    let minutes =
+        (safeSeconds % 3600) / 60
+
+    let remainingSeconds =
+        safeSeconds % 60
 
     if hours > 0 {
+
         return String(
-            format: "%d:%02d:%02d",
+            format:
+                "%d:%02d:%02d",
             hours,
             minutes,
             remainingSeconds
@@ -245,30 +960,52 @@ private func formatElapsed(_ seconds: Int) -> String {
     }
 
     return String(
-        format: "%02d:%02d",
+        format:
+            "%02d:%02d",
         minutes,
         remainingSeconds
     )
 }
 
-@available(iOS 16.2, *)
-private func formatDistance(_ meters: Int) -> String {
+private func formatDistance(
+    _ meters: Int
+) -> String {
 
-    if meters < 1000 {
-        return "\(meters) m"
-    }
+    let safeMeters =
+        max(
+            0,
+            meters
+        )
 
-    let kilometers = Double(meters) / 1000.0
+    if safeMeters >= 1000 {
 
-    if kilometers < 10 {
         return String(
-            format: "%.1f km",
-            kilometers
+            format:
+                "%.1f km",
+            Double(safeMeters) /
+                1000.0
         )
     }
 
-    return String(
-        format: "%.0f km",
-        kilometers
-    )
+    return "\(safeMeters) m"
 }
+
+// MARK: - URLs
+
+private let startRecordingURL =
+    URL(
+        string:
+            "simra://recording/start"
+    )!
+
+private let stopRecordingURL =
+    URL(
+        string:
+            "simra://recording/stop"
+    )!
+
+private let markIncidentURL =
+    URL(
+        string:
+            "simra://incident/mark?type=0"
+    )!

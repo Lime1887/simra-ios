@@ -8,7 +8,6 @@
 
 #import "AnnotationTVC.h"
 #import "IdPicker.h"
-#import "AppDelegate.h"
 
 @interface AnnotationTVC ()
 @property (weak, nonatomic) IBOutlet IdPicker *incident;

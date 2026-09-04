@@ -2,7 +2,7 @@
 //  TripEditView.swift
 //  SimRa
 //
-//  Created by Emil Pauls on 25.08.26.
+//  SwiftUI trip editor
 //
 
 import SwiftUI
@@ -10,45 +10,24 @@ import MapKit
 
 // MARK: - Trip Point
 
-@objcMembers
-public final class TripPoint: NSObject, MKAnnotation {
+/// SwiftUI representation of an incident attached to a trip location.
+struct TripPoint: Identifiable {
 
-    public var title: String?
-    public var tripLocation: TripLocation
+    let id = UUID()
+    let tripLocation: TripLocation
+    let title: String
 
-    public var subtitle: String? {
-        let date = tripLocation.location.timestamp
+    var coordinate: CLLocationCoordinate2D {
+        tripLocation.location.coordinate
+    }
 
-        return DateFormatter.localizedString(
-            from: date,
+    var subtitle: String {
+        DateFormatter.localizedString(
+            from: tripLocation.location.timestamp,
             dateStyle: .short,
             timeStyle: .medium
         )
     }
-
-    public var coordinate: CLLocationCoordinate2D {
-        tripLocation.location.coordinate
-    }
-
-    public init(tripLocation: TripLocation) {
-        self.tripLocation = tripLocation
-        super.init()
-    }
-}
-
-// MARK: - Host Delegate
-
-@objc
-public protocol TripEditViewHostDelegate: AnyObject {
-
-    func tripEditViewHostDidRequestDetails(
-        _ host: TripEditViewHostController
-    )
-
-    func tripEditViewHost(
-        _ host: TripEditViewHostController,
-        didRequestAnnotationEdit tripPoint: TripPoint
-    )
 }
 
 // MARK: - View Model
@@ -59,22 +38,32 @@ final class TripEditViewModel: ObservableObject {
     let trip: Trip
 
     @Published private(set) var locations: [TripLocation] = []
-
-    @Published var startIndex: Int = 0
-    @Published var endIndex: Int = 0
-
+    @Published var startIndex = 0
+    @Published var endIndex = 0
     @Published private(set) var tripPoints: [TripPoint] = []
-
     @Published var cameraPosition: MapCameraPosition = .automatic
-
     @Published private(set) var changed = false
 
-    init(trip: Trip) {
+    /// Incident titles supplied by the SwiftUI app layer.
+    private let incidentTitles: [String]
+
+    init(
+        trip: Trip,
+        incidentTitles: [String]? = nil
+    ) {
         self.trip = trip
+
+        if let incidentTitles, !incidentTitles.isEmpty {
+            self.incidentTitles = incidentTitles
+        } else {
+            self.incidentTitles =
+                (AppDelegate.shared().constants["incidents"] as? [String]) ?? []
+        }
+
         reload()
     }
 
-    // MARK: - Computed State
+    // MARK: - State
 
     var editingDisabled: Bool {
         trip.uploaded || trip.statisticsAdded
@@ -90,26 +79,15 @@ final class TripEditViewModel: ObservableObject {
         }
 
         return startIndex != 0 ||
-               endIndex != locations.count - 1
-    }
-
-    var selectedPointCount: Int {
-        guard !locations.isEmpty else {
-            return 0
-        }
-
-        return max(
-            endIndex - startIndex + 1,
-            0
-        )
+            endIndex != locations.count - 1
     }
 
     // MARK: - Reload
 
     func reload() {
-
-        locations =
-            (trip.tripLocations as? [TripLocation]) ?? []
+        locations = trip.tripLocations.compactMap {
+            $0 as? TripLocation
+        }
 
         guard !locations.isEmpty else {
             startIndex = 0
@@ -119,21 +97,8 @@ final class TripEditViewModel: ObservableObject {
             return
         }
 
-        let lastIndex = locations.count - 1
-
-        if endIndex == 0 && startIndex == 0 {
-            endIndex = lastIndex
-        } else {
-            startIndex = min(
-                max(startIndex, 0),
-                lastIndex
-            )
-
-            endIndex = min(
-                max(endIndex, startIndex),
-                lastIndex
-            )
-        }
+        startIndex = 0
+        endIndex = locations.count - 1
 
         rebuildTripPoints()
         updateCamera()
@@ -142,7 +107,6 @@ final class TripEditViewModel: ObservableObject {
     // MARK: - Selection
 
     func updateStartIndex(_ value: Int) {
-
         guard !locations.isEmpty else {
             return
         }
@@ -166,7 +130,6 @@ final class TripEditViewModel: ObservableObject {
     }
 
     func updateEndIndex(_ value: Int) {
-
         guard !locations.isEmpty else {
             return
         }
@@ -192,30 +155,10 @@ final class TripEditViewModel: ObservableObject {
         changed = true
     }
 
-    func resetSelection() {
-
-        guard !locations.isEmpty else {
-            return
-        }
-
-        startIndex = 0
-        endIndex = locations.count - 1
-
-        changed = true
-    }
-
-    // MARK: - Apply
+    // MARK: - Apply Trim
 
     func applySelection() {
-
         guard !locations.isEmpty else {
-            return
-        }
-
-        guard startIndex >= 0,
-              endIndex >= 0,
-              startIndex < locations.count,
-              endIndex < locations.count else {
             return
         }
 
@@ -229,6 +172,19 @@ final class TripEditViewModel: ObservableObject {
             endIndex
         )
 
+        guard lower >= 0,
+              upper < locations.count
+        else {
+            return
+        }
+
+        // Nothing to trim.
+        guard lower > 0 ||
+              upper < locations.count - 1
+        else {
+            return
+        }
+
         let selectedLocations = Array(
             locations[lower...upper]
         )
@@ -237,88 +193,188 @@ final class TripEditViewModel: ObservableObject {
             return
         }
 
+        updateCSVFiles(
+            for: selectedLocations
+        )
+
+        let removedLocations = locations
+            .enumerated()
+            .filter { index, _ in
+                index < lower ||
+                index > upper
+            }
+            .map(\.element)
+
+        for location in removedLocations {
+            location.tripMotions.removeAllObjects()
+            location.tripAnnotation = nil
+        }
+
         trip.tripLocations.removeAllObjects()
 
-        for location in selectedLocations {
-            trip.tripLocations.add(location)
-        }
-
-        changed = true
-
-        save()
-        reload()
-    }
-
-    // MARK: - Save
-
-    func save() {
-
-        guard changed else {
-            return
-        }
+        trip.tripLocations.addObjects(
+            from: selectedLocations
+        )
 
         trip.edited = true
         trip.save()
 
+        locations = selectedLocations
+
+        startIndex = 0
+        endIndex = max(
+            selectedLocations.count - 1,
+            0
+        )
+
+        changed = false
+
+        rebuildTripPoints()
+        updateCamera()
+
+        NotificationCenter.default.post(
+            name: Notification.Name("tripEdited"),
+            object: trip
+        )
+    }
+
+    // MARK: - CSV
+
+    private func updateCSVFiles(
+        for selectedLocations: [TripLocation]
+    ) {
+        let documentsURL =
+            Self.documentsDirectoryURL()
+
+        let locationsURL =
+            documentsURL.appendingPathComponent(
+                "TripLocations-\(trip.identifier).csv"
+            )
+
+        let motionsURL =
+            documentsURL.appendingPathComponent(
+                "TripMotions-\(trip.identifier).csv"
+            )
+
+        var locationLines: [String] = []
+        var motionLines: [String] = []
+
+        for location in selectedLocations {
+
+            let gyro =
+                location.gyro ?? TripGyro()
+
+            let locationLine =
+                TripGyro().locationString(
+                    from: location,
+                    gyro: gyro,
+                    closePassInfo:
+                        location.closePassInfo
+                )
+
+            locationLines.append(
+                locationLine
+            )
+
+            for case let motion
+                    as TripMotion
+                    in location.tripMotions {
+
+                let motionLine =
+                    TripMotion().motionString(
+                        from: motion
+                    )
+
+                motionLines.append(
+                    motionLine
+                )
+            }
+        }
+
+        if let data = locationLines
+            .joined(separator: "\n")
+            .data(using: .utf8) {
+
+            try? data.write(
+                to: locationsURL,
+                options: .atomic
+            )
+        }
+
+        if let data = motionLines
+            .joined(separator: "\n")
+            .data(using: .utf8) {
+
+            try? data.write(
+                to: motionsURL,
+                options: .atomic
+            )
+        }
+    }
+
+    private static func documentsDirectoryURL() -> URL {
+        FileManager.default.urls(
+            for: .documentDirectory,
+            in: .userDomainMask
+        )[0]
+    }
+
+    // MARK: - Persistence
+
+    func saveTrimmed() {
+        trip.edited = true
+        trip.save()
+
+        changed = false
+
+        NotificationCenter.default.post(
+            name: Notification.Name("tripEdited"),
+            object: trip
+        )
+    }
+
+    func persistAnnotations() {
+        trip.save()
         changed = false
     }
 
-    // MARK: - Incident Annotations
+    // MARK: - Incidents
 
     private func rebuildTripPoints() {
+        tripPoints = locations.compactMap { location in
 
-        tripPoints = []
-
-        for location in locations {
-
-            guard location.tripAnnotation != nil else {
-                continue
+            guard let annotation =
+                    location.tripAnnotation
+            else {
+                return nil
             }
 
-            guard let title = incidentTitle(
-                for: location.tripAnnotation
-            ) else {
-                continue
-            }
+            let title =
+                incidentTitle(
+                    for: annotation
+                )
+                ??
+                NSLocalizedString(
+                    "Danger",
+                    comment: "Fallback incident title"
+                )
 
-            let point = TripPoint(
-                tripLocation: location
+            return TripPoint(
+                tripLocation: location,
+                title: title
             )
-
-            point.title = title
-            point.tripLocation = location
-
-            tripPoints.append(point)
         }
     }
 
-    func deleteAnnotation(
-        _ tripPoint: TripPoint
-    ) {
-
-        guard !editingDisabled else {
-            return
-        }
-
-        tripPoint.tripLocation.tripAnnotation = nil
-
-        tripPoints.removeAll {
-            $0 === tripPoint
-        }
-
-        changed = true
-    }
-
+    @discardableResult
     func addAnnotation(
         at coordinate: CLLocationCoordinate2D
-    ) {
+    ) -> TripPoint? {
 
-        guard !editingDisabled else {
-            return
-        }
-
-        guard !locations.isEmpty else {
-            return
+        guard !editingDisabled,
+              !locations.isEmpty
+        else {
+            return nil
         }
 
         let target = CLLocation(
@@ -326,55 +382,104 @@ final class TripEditViewModel: ObservableObject {
             longitude: coordinate.longitude
         )
 
-        var closest: TripLocation?
+        var closestLocation:
+            TripLocation?
 
         var closestDistance =
-            CLLocationDistance.greatestFiniteMagnitude
+            CLLocationDistance
+                .greatestFiniteMagnitude
 
         for tripLocation in locations {
 
-            let location = tripLocation.location
-
-            let distance = location.distance(
-                from: target
-            )
+            let distance =
+                tripLocation.location.distance(
+                    from: target
+                )
 
             if distance < closestDistance {
                 closestDistance = distance
-                closest = tripLocation
+                closestLocation = tripLocation
             }
         }
 
-        guard let closest else {
-            return
+        guard let closestLocation,
+              closestLocation.tripAnnotation == nil
+        else {
+            return nil
         }
 
-        guard closest.tripAnnotation == nil else {
-            return
-        }
+        let annotation =
+            TripAnnotation()
 
-        let annotation = TripAnnotation()
+        closestLocation.tripAnnotation =
+            annotation
 
-        closest.tripAnnotation = annotation
+        let title =
+            incidentTitle(
+                for: annotation
+            )
+            ??
+            NSLocalizedString(
+                "Danger",
+                comment: "Fallback incident title"
+            )
 
-        guard let title = incidentTitle(
-            for: annotation
-        ) else {
-            closest.tripAnnotation = nil
-            return
-        }
-
-        let point = TripPoint(
-            tripLocation: closest
-        )
-
-        point.title = title
-        point.tripLocation = closest
+        let point =
+            TripPoint(
+                tripLocation: closestLocation,
+                title: title
+            )
 
         tripPoints.append(point)
 
-        changed = true
+        trip.edited = true
+        trip.save()
+
+        NotificationCenter.default.post(
+            name: Notification.Name("tripEdited"),
+            object: trip
+        )
+
+        NotificationCenter.default.post(
+            name: Notification.Name("annotationChanged"),
+            object: trip
+        )
+
+        return point
     }
+
+    func deleteAnnotation(
+        _ tripPoint: TripPoint
+    ) {
+        guard !editingDisabled else {
+            return
+        }
+
+        tripPoint
+            .tripLocation
+            .tripAnnotation = nil
+
+        tripPoints.removeAll {
+            $0.id == tripPoint.id
+        }
+
+        trip.edited = true
+        trip.save()
+
+        changed = false
+
+        NotificationCenter.default.post(
+            name: Notification.Name("tripEdited"),
+            object: trip
+        )
+
+        NotificationCenter.default.post(
+            name: Notification.Name("annotationChanged"),
+            object: trip
+        )
+    }
+
+    // MARK: - Incident Title
 
     private func incidentTitle(
         for annotation: TripAnnotation?
@@ -384,59 +489,51 @@ final class TripEditViewModel: ObservableObject {
             return nil
         }
 
-        guard let appDelegate =
-            UIApplication.shared.delegate as? AppDelegate else {
-            return nil
-        }
-
-        guard let incidents =
-            appDelegate.constants["incidents"] as? [String] else {
-            return nil
-        }
-
-        let incidentID = Int(
-            annotation.incidentId
-        )
+        let incidentID =
+            Int(annotation.incidentId)
 
         guard incidentID >= 0,
-              incidentID < incidents.count else {
+              incidentID < incidentTitles.count
+        else {
             return nil
         }
 
-        return incidents[incidentID]
+        return incidentTitles[incidentID]
     }
 
     // MARK: - Camera
 
     private func updateCamera() {
-
-        let coordinates = locations.compactMap {
-            $0.location.coordinate
-        }
+        let coordinates =
+            locations.map {
+                $0.location.coordinate
+            }
 
         guard !coordinates.isEmpty else {
             cameraPosition = .automatic
             return
         }
 
-        var rect = MKMapRect.null
+        var rect =
+            MKMapRect.null
 
         for coordinate in coordinates {
 
-            let point = MKMapPoint(coordinate)
+            let point =
+                MKMapPoint(coordinate)
 
-            let pointRect = MKMapRect(
-                x: point.x,
-                y: point.y,
-                width: 0,
-                height: 0
-            )
+            let pointRect =
+                MKMapRect(
+                    x: point.x,
+                    y: point.y,
+                    width: 0,
+                    height: 0
+                )
 
-            if rect.isNull {
-                rect = pointRect
-            } else {
-                rect = rect.union(pointRect)
-            }
+            rect =
+                rect.isNull
+                ? pointRect
+                : rect.union(pointRect)
         }
 
         guard !rect.isNull else {
@@ -444,150 +541,24 @@ final class TripEditViewModel: ObservableObject {
         }
 
         let horizontalPadding =
-            max(rect.size.width * 0.12, 100)
+            max(
+                rect.size.width * 0.12,
+                100
+            )
 
         let verticalPadding =
-            max(rect.size.height * 0.22, 150)
+            max(
+                rect.size.height * 0.18,
+                150
+            )
 
-        let paddedRect = rect.insetBy(
-            dx: -horizontalPadding,
-            dy: -verticalPadding
-        )
-
-        cameraPosition = .rect(paddedRect)
-    }
-}
-
-// MARK: - Host Controller
-
-@available(iOS 17.0, *)
-@objcMembers
-public final class TripEditViewHostController:
-    UIViewController {
-
-    private let trip: Trip
-
-    private weak var delegate:
-        TripEditViewHostDelegate?
-
-    private var viewModel:
-        TripEditViewModel
-
-    private var hostingController:
-        UIHostingController<TripEditView>!
-
-    @objc
-    public init(
-        trip: Trip,
-        delegate: TripEditViewHostDelegate
-    ) {
-
-        self.trip = trip
-        self.delegate = delegate
-        self.viewModel = TripEditViewModel(
-            trip: trip
-        )
-
-        super.init(
-            nibName: nil,
-            bundle: nil
-        )
-
-        self.hostingController =
-            UIHostingController(
-                rootView: TripEditView(
-                    viewModel: self.viewModel,
-                    onShowDetails: {},
-                    onEditAnnotation: { _ in }
+        cameraPosition =
+            .rect(
+                rect.insetBy(
+                    dx: -horizontalPadding,
+                    dy: -verticalPadding
                 )
             )
-
-        updateRootView()
-        embedHostingController()
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) {
-        fatalError(
-            "init(coder:) has not been implemented"
-        )
-    }
-
-    @objc
-    public func reload() {
-
-        viewModel = TripEditViewModel(
-            trip: trip
-        )
-
-        updateRootView()
-    }
-
-    private func updateRootView() {
-
-        hostingController.rootView =
-            TripEditView(
-                viewModel: viewModel,
-
-                onShowDetails: { [weak self] in
-                    guard let self else {
-                        return
-                    }
-
-                    self.delegate?
-                        .tripEditViewHostDidRequestDetails(
-                            self
-                        )
-                },
-
-                onEditAnnotation: { [weak self] tripPoint in
-                    guard let self else {
-                        return
-                    }
-
-                    self.delegate?
-                        .tripEditViewHost(
-                            self,
-                            didRequestAnnotationEdit: tripPoint
-                        )
-                }
-            )
-    }
-
-    private func embedHostingController() {
-
-        view.backgroundColor = .clear
-
-        addChild(hostingController)
-
-        hostingController.view.translatesAutoresizingMaskIntoConstraints =
-            false
-
-        hostingController.view.backgroundColor =
-            .clear
-
-        view.addSubview(
-            hostingController.view
-        )
-
-        NSLayoutConstraint.activate([
-            hostingController.view.leadingAnchor.constraint(
-                equalTo: view.leadingAnchor
-            ),
-            hostingController.view.trailingAnchor.constraint(
-                equalTo: view.trailingAnchor
-            ),
-            hostingController.view.topAnchor.constraint(
-                equalTo: view.topAnchor
-            ),
-            hostingController.view.bottomAnchor.constraint(
-                equalTo: view.bottomAnchor
-            )
-        ])
-
-        hostingController.didMove(
-            toParent: self
-        )
     }
 }
 
@@ -595,93 +566,140 @@ public final class TripEditViewHostController:
 
 struct TripEditView: View {
 
-    @ObservedObject var viewModel:
-        TripEditViewModel
+    @ObservedObject
+    var viewModel: TripEditViewModel
 
-    let onShowDetails: () -> Void
+    @State
+    private var editingTripPoint:
+        TripPoint?
 
-    let onEditAnnotation:
-        (TripPoint) -> Void
+    @State
+    private var showTripDetails =
+        false
 
     var body: some View {
 
-        ZStack(alignment: .bottom) {
+        NavigationStack {
 
-            TripMap(
+            MapEditor(
                 viewModel: viewModel,
-                onEditAnnotation: onEditAnnotation
+                onEditAnnotation: {
+                    editingTripPoint = $0
+                }
             )
             .ignoresSafeArea()
-
-            BottomEditor(
-                viewModel: viewModel
+            .safeAreaInset(
+                edge: .bottom,
+                spacing: 0
+            ) {
+                BottomEditor(
+                    viewModel: viewModel
+                )
+                .padding(
+                    .horizontal,
+                    16
+                )
+                .padding(
+                    .bottom,
+                    8
+                )
+            }
+            .navigationTitle(
+                NSLocalizedString(
+                    "Edit trip",
+                    comment:
+                        "Trip editor title"
+                )
             )
-            .padding(.horizontal, 16)
-            .padding(.bottom, 8)
-        }
-        .toolbar {
+            .navigationBarTitleDisplayMode(
+                .inline
+            )
+            .toolbar {
 
-            // MARK: Centered Navigation Title
+                // MARK: Details
 
-            ToolbarItem(
-                placement: .principal
-            ) {
-
-                Text(
-                    NSLocalizedString(
-                        "Edit trip",
-                        comment: ""
-                    )
-                )
-                .font(.headline)
-            }
-
-            // MARK: Details
-
-            ToolbarItem(
-                placement: .topBarLeading
-            ) {
-
-                Button(
-                    action: onShowDetails
+                ToolbarItem(
+                    placement:
+                        .topBarLeading
                 ) {
-
-                    Image(
-                        systemName: "info.circle"
-                    )
-                }
-                .accessibilityLabel(
-                    NSLocalizedString(
-                        "Details",
-                        comment: ""
-                    )
-                )
-            }
-
-            // MARK: Done
-
-            ToolbarItem(
-                placement: .topBarTrailing
-            ) {
-
-                Button {
-
-                    viewModel.applySelection()
-
-                } label: {
-
-                    Text(
+                    Button {
+                        showTripDetails = true
+                    } label: {
+                        Image(
+                            systemName:
+                                "info.circle"
+                        )
+                    }
+                    .accessibilityLabel(
                         NSLocalizedString(
-                            "Done",
-                            comment: ""
+                            "Details",
+                            comment:
+                                "Trip details button"
                         )
                     )
-                    .fontWeight(.semibold)
                 }
-                .disabled(
-                    viewModel.editingDisabled ||
-                    !viewModel.hasChangedRange
+
+                // MARK: Trim
+
+                ToolbarItem(
+                    placement:
+                        .topBarTrailing
+                ) {
+                    Button {
+                        viewModel.applySelection()
+                    } label: {
+                        Text(
+                            NSLocalizedString(
+                                "Trim",
+                                comment:
+                                    "Trim trip"
+                            )
+                        )
+                    }
+                    .fontWeight(.semibold)
+                    .disabled(
+                        viewModel.editingDisabled ||
+                        !viewModel.hasChangedRange
+                    )
+                }
+            }
+            .sheet(
+                isPresented:
+                    $showTripDetails
+            ) {
+                NavigationStack {
+                    TripDetailView(
+                        trip:
+                            viewModel.trip
+                    )
+                }
+                .presentationDetents([
+                    .medium,
+                    .large
+                ])
+                .presentationDragIndicator(
+                    .visible
                 )
+            }
+            .sheet(
+                item:
+                    $editingTripPoint
+            ) { point in
+                NavigationStack {
+                    if let annotation =
+                        point.tripLocation.tripAnnotation {
+
+                        AnnotationView(
+                            tripAnnotation:
+                                annotation,
+                            trip:
+                                viewModel.trip
+                        )
+                    }
+                }
+            }
+            .onDisappear {
+                viewModel.persistAnnotations()
             }
         }
     }
@@ -689,45 +707,95 @@ struct TripEditView: View {
 
 // MARK: - Map
 
-private struct TripMap: View {
+private struct MapEditor: View {
 
-    @ObservedObject var viewModel:
+    @ObservedObject
+    var viewModel:
         TripEditViewModel
 
     let onEditAnnotation:
         (TripPoint) -> Void
 
+    @State
+    private var lastPressLocation:
+        CGPoint?
+
     var body: some View {
 
-        Map(
-            position:
-                $viewModel.cameraPosition
-        ) {
+        MapReader { proxy in
 
-            completeTrack
-
-            selectedTrack
-
-            startAnnotation
-
-            endAnnotation
-
-            incidentAnnotations
-        }
-        .mapStyle(
-            .standard(
-                elevation: .realistic
+            Map(
+                position:
+                    $viewModel.cameraPosition
+            ) {
+                completeTrack
+                selectedTrack
+                startAnnotation
+                endAnnotation
+                incidentAnnotations
+            }
+            .mapStyle(
+                .standard(
+                    elevation: .realistic
+                )
             )
-        )
-        .mapControls {
+            .mapControls {
+                MapCompass()
+                MapScaleView()
+                MapPitchToggle()
+            }
+            .mapControlVisibility(
+                .visible
+            )
+            .safeAreaPadding(
+                .top,
+                96
+            )
+            .safeAreaPadding(
+                .bottom,
+                96
+            )
+            .simultaneousGesture(
+                DragGesture(
+                    minimumDistance: 0
+                )
+                .onChanged { value in
+                    lastPressLocation =
+                        value.location
+                }
+            )
+            .simultaneousGesture(
+                LongPressGesture(
+                    minimumDuration:
+                        0.55
+                )
+                .onEnded { _ in
 
-            MapCompass()
+                    guard
+                        let location =
+                            lastPressLocation,
+                        let coordinate =
+                            proxy.convert(
+                                location,
+                                from: .local
+                            ),
+                        let point =
+                            viewModel.addAnnotation(
+                                at: coordinate
+                            )
+                    else {
+                        return
+                    }
 
-            MapScaleView()
-
-            MapPitchToggle()
+                    onEditAnnotation(
+                        point
+                    )
+                }
+            )
         }
     }
+
+    // MARK: - Complete Track
 
     @MapContentBuilder
     private var completeTrack:
@@ -737,16 +805,20 @@ private struct TripMap: View {
 
             MapPolyline(
                 coordinates:
-                    viewModel.locations.compactMap {
+                    viewModel.locations.map {
                         $0.location.coordinate
                     }
             )
             .stroke(
-                Color.red.opacity(0.42),
+                Color.primary.opacity(
+                    0.23
+                ),
                 lineWidth: 3
             )
         }
     }
+
+    // MARK: - Selected Track
 
     @MapContentBuilder
     private var selectedTrack:
@@ -754,32 +826,37 @@ private struct TripMap: View {
 
         if viewModel.locations.count > 1 {
 
-            let start = min(
-                viewModel.startIndex,
-                viewModel.locations.count - 1
-            )
+            let start =
+                min(
+                    viewModel.startIndex,
+                    viewModel.locations.count - 1
+                )
 
-            let end = min(
-                viewModel.endIndex,
-                viewModel.locations.count - 1
-            )
+            let end =
+                min(
+                    viewModel.endIndex,
+                    viewModel.locations.count - 1
+                )
 
             if start <= end {
 
-                let selected = Array(
-                    viewModel.locations[start...end]
-                )
+                let selected =
+                    Array(
+                        viewModel.locations[
+                            start...end
+                        ]
+                    )
 
                 if selected.count > 1 {
 
                     MapPolyline(
                         coordinates:
-                            selected.compactMap {
+                            selected.map {
                                 $0.location.coordinate
                             }
                     )
                     .stroke(
-                        Color.accentColor,
+                        .tint,
                         lineWidth: 5
                     )
                 }
@@ -787,177 +864,137 @@ private struct TripMap: View {
         }
     }
 
-    // MARK: Start Annotation
+    // MARK: - Start
 
     @MapContentBuilder
     private var startAnnotation:
         some MapContent {
 
         if let coordinate =
-            coordinate(at: viewModel.startIndex) {
-
-            Annotation(
-                NSLocalizedString(
-                    "Start",
-                    comment: ""
-                ),
-                coordinate: coordinate
+            coordinate(
+                at:
+                    viewModel.startIndex
             ) {
 
-                ZStack {
-
-                    Circle()
-                        .fill(.white)
-                        .frame(
-                            width: 36,
-                            height: 36
-                        )
-
-                    Circle()
-                        .fill(.green)
-                        .frame(
-                            width: 26,
-                            height: 26
-                        )
-
-                    Image(
-                        systemName: "arrow.down"
-                    )
-                    .font(
-                        .system(
-                            size: 12,
-                            weight: .bold
-                        )
-                    )
-                    .foregroundStyle(.white)
-                }
-                .shadow(
-                    color:
-                        .black.opacity(0.22),
-                    radius: 5,
-                    y: 2
+            Annotation(
+                "",
+                coordinate:
+                    coordinate
+            ) {
+                EndpointMarker(
+                    systemImage:
+                        "play.fill",
+                    tint:
+                        .green
                 )
             }
         }
     }
 
-    // MARK: End Annotation
+    // MARK: - End
 
     @MapContentBuilder
     private var endAnnotation:
         some MapContent {
 
         if let coordinate =
-            coordinate(at: viewModel.endIndex) {
-
-            Annotation(
-                NSLocalizedString(
-                    "Finish",
-                    comment: ""
-                ),
-                coordinate: coordinate
+            coordinate(
+                at:
+                    viewModel.endIndex
             ) {
 
-                ZStack {
-
-                    Circle()
-                        .fill(.white)
-                        .frame(
-                            width: 36,
-                            height: 36
-                        )
-
-                    Circle()
-                        .fill(.red)
-                        .frame(
-                            width: 26,
-                            height: 26
-                        )
-
-                    Image(
-                        systemName: "flag.fill"
-                    )
-                    .font(
-                        .system(
-                            size: 12,
-                            weight: .bold
-                        )
-                    )
-                    .foregroundStyle(.white)
-                }
-                .shadow(
-                    color:
-                        .black.opacity(0.22),
-                    radius: 5,
-                    y: 2
+            Annotation(
+                "",
+                coordinate:
+                    coordinate
+            ) {
+                EndpointMarker(
+                    systemImage:
+                        "flag.checkered",
+                    tint:
+                        .red
                 )
             }
         }
     }
 
-    // MARK: Incident Annotations
+    // MARK: - Incidents
 
     @MapContentBuilder
     private var incidentAnnotations:
         some MapContent {
 
         ForEach(
-            Array(
-                viewModel.tripPoints.enumerated()
-            ),
-            id: \.offset
-        ) { _, point in
-
-            let coordinate =
-                point.tripLocation.location.coordinate
+            viewModel.tripPoints
+        ) { point in
 
             Annotation(
-                point.title ?? "",
-                coordinate: coordinate
+                point.title,
+                coordinate:
+                    point.coordinate
             ) {
-
                 Button {
-
-                    onEditAnnotation(point)
-
+                    onEditAnnotation(
+                        point
+                    )
                 } label: {
-
                     Image(
                         systemName:
-                            "exclamationmark"
+                            "exclamationmark.triangle.fill"
                     )
                     .font(
-                        .system(
-                            size: 14,
-                            weight: .bold
+                        .caption.weight(
+                            .bold
                         )
                     )
-                    .foregroundStyle(.white)
+                    .foregroundStyle(
+                        .white
+                    )
                     .frame(
                         width: 30,
                         height: 30
                     )
                     .background(
-                        incidentColor(point),
+                        incidentColor(
+                            for: point
+                        ),
                         in: Circle()
                     )
-                    .shadow(
-                        color:
-                            .black.opacity(0.2),
-                        radius: 4,
-                        y: 2
-                    )
+                    .overlay {
+                        Circle()
+                            .stroke(
+                                .white.opacity(
+                                    0.9
+                                ),
+                                lineWidth: 1.5
+                            )
+                    }
                 }
+                .buttonStyle(.plain)
+                .accessibilityLabel(
+                    point.title
+                )
+                .accessibilityHint(
+                    NSLocalizedString(
+                        "Edit incident",
+                        comment:
+                            "Incident annotation hint"
+                    )
+                )
             }
         }
     }
+
+    // MARK: - Helpers
 
     private func coordinate(
         at index: Int
     ) -> CLLocationCoordinate2D? {
 
-        guard index >= 0,
-              index < viewModel.locations.count else {
+        guard
+            index >= 0,
+            index < viewModel.locations.count
+        else {
             return nil
         }
 
@@ -967,28 +1004,75 @@ private struct TripMap: View {
     }
 
     private func incidentColor(
-        _ point: TripPoint
+        for point: TripPoint
     ) -> Color {
 
         guard let annotation =
-            point.tripLocation.tripAnnotation else {
+                point.tripLocation
+                    .tripAnnotation
+        else {
             return .blue
         }
 
-        let incidentID =
-            Int(annotation.incidentId)
+        // Different colors for different sources
+        if annotation.source == "Siri" {
+            return annotation.frightening ? .purple : .blue
+        } else if annotation.source != "Manual" {
+            return annotation.frightening ? .indigo : .cyan
+        }
 
-        return incidentID == 0
-            ? .orange
-            : .blue
+        return annotation.frightening
+            ? .red
+            : .orange
+    }
+}
+
+// MARK: - Endpoint Marker
+
+private struct EndpointMarker:
+    View {
+
+    let systemImage: String
+    let tint: Color
+
+    var body: some View {
+        Image(
+            systemName:
+                systemImage
+        )
+        .font(
+            .caption.weight(.bold)
+        )
+        .foregroundStyle(
+            .white
+        )
+        .frame(
+            width: 30,
+            height: 30
+        )
+        .background(
+            tint,
+            in: Circle()
+        )
+        .overlay {
+            Circle()
+                .stroke(
+                    .white.opacity(
+                        0.9
+                    ),
+                    lineWidth: 1.5
+                )
+        }
     }
 }
 
 // MARK: - Bottom Editor
 
-private struct BottomEditor: View {
+private struct BottomEditor:
+    View {
 
-    @ObservedObject var viewModel:
+    @ObservedObject
+    var viewModel:
         TripEditViewModel
 
     var body: some View {
@@ -1002,71 +1086,51 @@ private struct BottomEditor: View {
                 viewModel.locations.count,
             disabled:
                 viewModel.editingDisabled,
-            onStartChanged: {
-                viewModel.updateStartIndex($0)
-            },
-            onEndChanged: {
-                viewModel.updateEndIndex($0)
-            }
+            onStartChanged:
+                viewModel.updateStartIndex,
+            onEndChanged:
+                viewModel.updateEndIndex
         )
-        .padding(.horizontal, 18)
-        .padding(.vertical, 12)
-        .modifier(
-            BottomEditorGlassModifier()
+        .padding(
+            .horizontal,
+            18
         )
-    }
-}
-
-// MARK: - Bottom Editor Glass
-
-private struct BottomEditorGlassModifier:
-    ViewModifier {
-
-    func body(
-        content: Content
-    ) -> some View {
-
-        if #available(iOS 26.0, *) {
-
-            content
-                .glassEffect(
-                    .regular,
-                    in: RoundedRectangle(
-                        cornerRadius: 24,
-                        style: .continuous
-                    )
-                )
-
-        } else {
-
-            content
-                .background(
-                    .regularMaterial,
-                    in: RoundedRectangle(
-                        cornerRadius: 24,
-                        style: .continuous
-                    )
-                )
-                .overlay {
-                    RoundedRectangle(
-                        cornerRadius: 24,
-                        style: .continuous
-                    )
-                    .stroke(
-                        Color.primary.opacity(0.08),
-                        lineWidth: 0.7
-                    )
-                }
+        .padding(
+            .vertical,
+            10
+        )
+        .background(
+            .regularMaterial,
+            in: RoundedRectangle(
+                cornerRadius: 20,
+                style: .continuous
+            )
+        )
+        .overlay {
+            RoundedRectangle(
+                cornerRadius: 20,
+                style: .continuous
+            )
+            .stroke(
+                Color.primary.opacity(
+                    0.08
+                ),
+                lineWidth: 0.5
+            )
         }
     }
 }
 
 // MARK: - Range Slider
 
-private struct RangeSlider: View {
+private struct RangeSlider:
+    View {
 
-    @Binding var startIndex: Int
-    @Binding var endIndex: Int
+    @Binding
+    var startIndex: Int
+
+    @Binding
+    var endIndex: Int
 
     let count: Int
     let disabled: Bool
@@ -1077,7 +1141,8 @@ private struct RangeSlider: View {
     let onEndChanged:
         (Int) -> Void
 
-    @State private var activeHandle:
+    @State
+    private var activeHandle:
         Handle?
 
     private enum Handle {
@@ -1091,71 +1156,85 @@ private struct RangeSlider: View {
 
             let inset: CGFloat = 18
 
-            let width = max(
-                geometry.size.width -
-                inset * 2,
-                1
-            )
+            let width =
+                max(
+                    geometry.size.width -
+                        inset * 2,
+                    1
+                )
 
-            let maximum = max(
-                count - 1,
-                1
-            )
+            let maximum =
+                max(
+                    count - 1,
+                    1
+                )
 
-            let startX = position(
-                index: startIndex,
-                maximum: maximum,
-                width: width,
-                inset: inset
-            )
+            let centerY =
+                geometry.size.height / 2
 
-            let endX = position(
-                index: endIndex,
-                maximum: maximum,
-                width: width,
-                inset: inset
-            )
+            let startX =
+                position(
+                    index:
+                        startIndex,
+                    maximum:
+                        maximum,
+                    width:
+                        width,
+                    inset:
+                        inset
+                )
+
+            let endX =
+                position(
+                    index:
+                        endIndex,
+                    maximum:
+                        maximum,
+                    width:
+                        width,
+                    inset:
+                        inset
+                )
 
             ZStack {
 
-                // Track
-
                 Capsule()
                     .fill(
-                        Color.primary.opacity(0.12)
+                        Color.primary.opacity(
+                            0.12
+                        )
                     )
-                    .frame(height: 6)
-                    .padding(
-                        .horizontal,
-                        inset
+                    .frame(
+                        height: 5
                     )
-
-                // Selected range
+                    .position(
+                        x:
+                            geometry.size.width / 2,
+                        y:
+                            centerY
+                    )
 
                 Capsule()
-                    .fill(
-                        Color.accentColor
-                    )
+                    .fill(.tint)
                     .frame(
                         width:
                             max(
                                 endX - startX,
                                 6
                             ),
-                        height: 6
+                        height: 5
                     )
                     .position(
                         x:
                             (startX + endX) / 2,
                         y:
-                            geometry.size.height / 2
+                            centerY
                     )
 
-                // Start handle
-
-                handle(
+                sliderHandle(
                     type: .start,
-                    x: startX
+                    x: startX,
+                    y: centerY
                 )
                 .gesture(
                     dragGesture(
@@ -1166,11 +1245,10 @@ private struct RangeSlider: View {
                     )
                 )
 
-                // End handle
-
-                handle(
+                sliderHandle(
                     type: .end,
-                    x: endX
+                    x: endX,
+                    y: centerY
                 )
                 .gesture(
                     dragGesture(
@@ -1182,104 +1260,84 @@ private struct RangeSlider: View {
                 )
             }
         }
-        .frame(height: 44)
+        .frame(
+            height: 38
+        )
         .opacity(
             disabled ? 0.45 : 1
         )
+        .accessibilityElement(
+            children: .contain
+        )
     }
 
-    // MARK: Handle
+    // MARK: - Handle
 
-    private func handle(
+    private func sliderHandle(
         type: Handle,
-        x: CGFloat
+        x: CGFloat,
+        y: CGFloat
     ) -> some View {
 
-        Group {
+        let isStart =
+            type == .start
 
-            if #available(iOS 26.0, *) {
+        let tint: Color =
+            isStart
+            ? .green
+            : .red
 
-                ZStack {
-
-                    Circle()
-                        .fill(
-                            Color.accentColor
-                                .opacity(0.9)
-                        )
-                        .frame(
-                            width: 30,
-                            height: 30
-                        )
-
-                    Capsule()
-                        .fill(.white)
-                        .frame(
-                            width: 3,
-                            height: 12
-                        )
-                }
-                .glassEffect(
-                    .regular.interactive(),
-                    in: Circle()
-                )
-
-            } else {
-
-                ZStack {
-
-                    Circle()
-                        .fill(.background)
-                        .frame(
-                            width: 32,
-                            height: 32
-                        )
-                        .shadow(
-                            color:
-                                .black.opacity(0.18),
-                            radius: 5,
-                            y: 2
-                        )
-
-                    Circle()
-                        .stroke(
-                            Color.accentColor,
-                            lineWidth:
-                                activeHandle == type
-                                ? 2
-                                : 1
-                        )
-                        .frame(
-                            width: 32,
-                            height: 32
-                        )
-
-                    Capsule()
-                        .fill(
-                            Color.accentColor
-                        )
-                        .frame(
-                            width: 3,
-                            height: 12
-                        )
-                }
+        return Circle()
+            .fill(.background)
+            .frame(
+                width: 28,
+                height: 28
+            )
+            .overlay {
+                Circle()
+                    .stroke(
+                        tint,
+                        lineWidth:
+                            activeHandle == type
+                            ? 2
+                            : 1.25
+                    )
             }
-        }
-        .scaleEffect(
-            activeHandle == type
-            ? 1.08
-            : 1
-        )
-        .position(
-            x: x,
-            y: 22
-        )
-        .animation(
-            .easeOut(duration: 0.12),
-            value: activeHandle
-        )
+            .overlay {
+                Image(
+                    systemName:
+                        isStart
+                        ? "play.fill"
+                        : "flag.checkered"
+                )
+                .font(
+                    .caption2.weight(
+                        .bold
+                    )
+                )
+                .foregroundStyle(
+                    tint
+                )
+            }
+            .scaleEffect(
+                activeHandle == type
+                ? 1.08
+                : 1
+            )
+            .animation(
+                .easeOut(
+                    duration: 0.12
+                ),
+                value:
+                    activeHandle == type
+            )
+            .position(
+                x: x,
+                y: y
+            )
     }
 
-    // MARK: Drag Gesture
+    // MARK: - Gesture
 
     private func dragGesture(
         handle: Handle,
@@ -1299,41 +1357,47 @@ private struct RangeSlider: View {
 
             activeHandle = handle
 
-            let normalized = min(
-                max(
-                    (
-                        value.location.x -
-                        inset
-                    ) / width,
-                    0
-                ),
-                1
-            )
-
-            let index = Int(
-                (
-                    normalized *
-                    CGFloat(maximum)
+            let normalized =
+                min(
+                    max(
+                        (
+                            value.location.x -
+                            inset
+                        ) / width,
+                        0
+                    ),
+                    1
                 )
-                .rounded()
-            )
+
+            let index =
+                Int(
+                    (
+                        normalized *
+                        CGFloat(
+                            maximum
+                        )
+                    )
+                    .rounded()
+                )
 
             switch handle {
 
             case .start:
 
-                let newValue = min(
-                    max(index, 0),
-                    max(
-                        endIndex - 1,
-                        0
+                let newValue =
+                    min(
+                        max(
+                            index,
+                            0
+                        ),
+                        max(
+                            endIndex - 1,
+                            0
+                        )
                     )
-                )
 
                 if newValue != startIndex {
-
                     startIndex = newValue
-
                     onStartChanged(
                         newValue
                     )
@@ -1341,21 +1405,20 @@ private struct RangeSlider: View {
 
             case .end:
 
-                let newValue = max(
-                    min(
-                        index,
-                        maximum
-                    ),
-                    min(
-                        startIndex + 1,
-                        maximum
+                let newValue =
+                    max(
+                        min(
+                            index,
+                            maximum
+                        ),
+                        min(
+                            startIndex + 1,
+                            maximum
+                        )
                     )
-                )
 
                 if newValue != endIndex {
-
                     endIndex = newValue
-
                     onEndChanged(
                         newValue
                     )
@@ -1367,7 +1430,7 @@ private struct RangeSlider: View {
         }
     }
 
-    // MARK: Position
+    // MARK: - Position
 
     private func position(
         index: Int,
@@ -1384,6 +1447,7 @@ private struct RangeSlider: View {
             (
                 CGFloat(index) /
                 CGFloat(maximum)
-            ) * width
+            ) *
+            width
     }
 }

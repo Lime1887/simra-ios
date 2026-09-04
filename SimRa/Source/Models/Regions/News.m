@@ -21,9 +21,11 @@
 + (News *)sharedNews {
     static News *sharedInstance = nil;
     static dispatch_once_t onceToken;
-    dispatch_sync(onceToken, ^ {
+    
+    dispatch_once(&onceToken, ^{
         sharedInstance = [[News alloc] init];
     });
+    
     return sharedInstance;
 }
 

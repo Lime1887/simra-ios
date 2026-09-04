@@ -6,7 +6,6 @@
 //  Copyright © 2026 Mobile Cloud Computing an der Fakultät IV (Elektrotechnik und Informatik) der TU Berlin. All rights reserved.
 //
 
-
 import Foundation
 
 @objcMembers
@@ -16,22 +15,29 @@ public class News: NSObject {
     public var newsItems: NSMutableArray = []
     public var lastSeenNewsId: Int = 0
     
+    public private(set) var newsLines: [String] = []
     private var newsVersion: Int = 0
-    private var newsLines: [String] = []
 
     public override init() {
         super.init()
         self.newsLines = []
         self.newsVersion = UserDefaults.standard.integer(forKey: "newsVersion")
-        self.refresh()
+    }
+    
+    private var hasInitialized = false
+    private func ensureInitialized() {
+        guard !hasInitialized else { return }
+        hasInitialized = true
+        refresh()
     }
 
     public func refresh() {
+        ensureInitialized()
         let preferredLang = Bundle.preferredLocalizations(from: ["en", "de"]).first ?? "en"
         
         // Zugriff auf Objective-C Klassen (API und NSString-Kategorie)
-        let clientHash = NSString.clientHash() ?? ""
-        let prefix = API.apiShortPrefix ?? ""
+        let clientHash = API.clientHash()
+        let prefix = API.apiPrefix()
         
         let urlString = "\(prefix)/check/news?clientHash=\(clientHash)&lastSeenNewsID=\(newsVersion)&newsLanguage=\(preferredLang)"
         
@@ -92,6 +98,7 @@ public class News: NSObject {
     }
 
     public func seen() {
-        Utility.saveIntWithKey("newsVersion", value: newsVersion)
+        Utility.saveInt(key: "newsVersion", value: newsVersion)
     }
 }
+

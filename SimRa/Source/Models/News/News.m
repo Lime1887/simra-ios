@@ -7,7 +7,7 @@
 //
 
 #import "News.h"
-#import "NSString+hashCode.h"
+#import "../../Utils/Helper/NSString+hashCode.h"
 #import "SimRa-Swift.h"
 #import "API.h"
 

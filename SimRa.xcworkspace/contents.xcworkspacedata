@@ -11,9 +11,6 @@
       location = "group:SimRa.xcodeproj">
    </FileRef>
    <FileRef
-      location = "group:Pods/Pods.xcodeproj">
-   </FileRef>
-   <FileRef
-      location = "group:SimRaRecordingAttributes.swift">
+      location = "group:SimRaStatisticsWidget.swift">
    </FileRef>
 </Workspace>

@@ -1,23 +1,25 @@
 //
-//  TripItem.swift
+//  MyTrip.swift
 //  SimRa
 //
 //  Created by Emil Pauls on 27.08.26.
-//  Copyright © 2026 Mobile Cloud Computing an der Fakultät IV
-//  (Elektrotechnik und Informatik) der TU Berlin. All rights reserved.
 //
 
 import Foundation
 import SwiftUI
+import CoreLocation
 
 // MARK: - My Trips View
 
 struct MyTripsView: View {
 
-    // MARK: - State
+    // MARK: State
 
-    @State private var trips: [Trip] = []
-    @State private var selectedTripIDs = Set<Int>()
+    @State private var items: [TripListItem] = []
+    @State private var selectedTripIDs: Set<Int> = []
+
+    @State private var isLoading = false
+    @State private var hasLoaded = false
 
     @StateObject private var uploadCoordinator =
         TripBatchUploadCoordinator()
@@ -25,120 +27,134 @@ struct MyTripsView: View {
     @Environment(\.editMode)
     private var editMode
 
-    // MARK: - Derived State
-
-    private var pendingTrips: [Trip] {
-        trips.filter { !$0.uploaded }
-    }
-
-    private var uploadedTrips: [Trip] {
-        trips.filter { $0.uploaded }
-    }
+    // MARK: Derived State
 
     private var isEditing: Bool {
         editMode?.wrappedValue.isEditing == true
     }
 
-    private var allPendingTripsSelected: Bool {
-        let pendingIDs = Set(
-            pendingTrips.map(\.identifier)
-        )
+    private var pendingItems: [TripListItem] {
+        items.filter {
+            !$0.isUploaded
+        }
+    }
 
-        guard !pendingIDs.isEmpty else {
+    private var uploadedItems: [TripListItem] {
+        items.filter {
+            $0.isUploaded
+        }
+    }
+
+    private var selectedItems: [TripListItem] {
+        items.filter {
+            selectedTripIDs.contains(
+                $0.id
+            )
+        }
+    }
+
+    private var selectedPendingItems: [TripListItem] {
+        selectedItems.filter {
+            !$0.isUploaded
+        }
+    }
+
+    private var allPendingSelected: Bool {
+        let ids =
+            Set(
+                pendingItems.map(
+                    \.id
+                )
+            )
+
+        guard !ids.isEmpty else {
             return false
         }
 
-        return pendingIDs.allSatisfy {
-            selectedTripIDs.contains($0)
-        }
+        return ids.isSubset(
+            of: selectedTripIDs
+        )
     }
 
-    private var hasSelection: Bool {
-        !selectedTripIDs.isEmpty
-    }
-
-    // MARK: - Body
+    // MARK: Body
 
     var body: some View {
-        List(selection: $selectedTripIDs) {
 
-            // MARK: Not Uploaded
+        List(
+            selection:
+                $selectedTripIDs
+        ) {
 
-            if !pendingTrips.isEmpty {
-                Section {
-                    ForEach(
-                        pendingTrips,
-                        id: \.identifier
-                    ) { trip in
-                        tripRow(for: trip)
-                    }
-                } header: {
-                    sectionHeader(
-                        NSLocalizedString(
-                            "Not Uploaded",
-                            comment: "Not Uploaded"
-                        )
-                    )
-                }
-            }
+            pendingSection
+            uploadedSection
 
-            // MARK: Uploaded
+            if hasLoaded &&
+                items.isEmpty {
 
-            if !uploadedTrips.isEmpty {
-                Section {
-                    ForEach(
-                        uploadedTrips,
-                        id: \.identifier
-                    ) { trip in
-                        tripRow(for: trip)
-                    }
-                } header: {
-                    sectionHeader(
-                        NSLocalizedString(
-                            "Uploaded",
-                            comment: "Uploaded"
-                        )
-                    )
-                }
-            }
-
-            // MARK: Empty
-
-            if trips.isEmpty {
-                ContentUnavailableView(
-                    NSLocalizedString(
-                        "No trips",
-                        comment: "No trips"
-                    ),
-                    systemImage: "bicycle",
-                    description: Text(
-                        NSLocalizedString(
-                            "Once trips are recorded, they will appear here.",
-                            comment: "Empty trips description"
-                        )
-                    )
-                )
-                .listRowBackground(Color.clear)
-                .listRowSeparator(.hidden)
+                emptyState
             }
         }
-        .listStyle(.insetGrouped)
+        .listStyle(
+            .insetGrouped
+        )
         .navigationTitle(
             NSLocalizedString(
                 "My Trips",
-                comment: "My Trips"
+                comment:
+                    "My Trips"
             )
         )
-        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarTitleDisplayMode(
+            .inline
+        )
         .toolbar {
-            toolbarContent
+            toolbar
         }
-        .safeAreaInset(
-            edge: .bottom,
-            spacing: 0
-        ) {
-            if uploadCoordinator.isUploading {
-                uploadProgressView
+        .task {
+            await loadTripsIfNeeded()
+        }
+        .refreshable {
+            await reloadTrips()
+        }
+        .onChange(
+            of: isEditing
+        ) { _, editing in
+
+            if !editing {
+                selectedTripIDs.removeAll()
+            }
+        }
+        .onReceive(
+            NotificationCenter.default.publisher(
+                for:
+                    .tripEdited
+            )
+        ) { _ in
+
+            Task {
+                await reloadTrips()
+            }
+        }
+        .onReceive(
+            NotificationCenter.default.publisher(
+                for:
+                    .tripAttributesChanged
+            )
+        ) { _ in
+
+            Task {
+                await reloadTrips()
+            }
+        }
+        .onReceive(
+            NotificationCenter.default.publisher(
+                for:
+                    .tripAnnotationChanged
+            )
+        ) { _ in
+
+            Task {
+                await reloadTrips()
             }
         }
         .alert(
@@ -146,103 +162,191 @@ struct MyTripsView: View {
             isPresented:
                 $uploadCoordinator.showAlert
         ) {
+
             Button(
                 NSLocalizedString(
                     "OK",
-                    comment: "OK"
+                    comment:
+                        "OK"
                 ),
-                role: .cancel
+                role:
+                    .cancel
             ) {
-                reloadTrips()
+
+                Task {
+                    await reloadTrips()
+                }
             }
+
         } message: {
+
             Text(
                 uploadCoordinator.alertMessage
             )
         }
-        .onAppear {
-            reloadTrips()
-        }
-        .onChange(of: isEditing) { _, editing in
-            if !editing {
-                selectedTripIDs.removeAll()
-            }
-        }
-        .onReceive(
-            NotificationCenter.default.publisher(
-                for: .tripEdited
-            )
-        ) { _ in
-            reloadTrips()
-        }
-        .onReceive(
-            NotificationCenter.default.publisher(
-                for: .tripAttributesChanged
-            )
-        ) { _ in
-            reloadTrips()
-        }
-        .onReceive(
-            NotificationCenter.default.publisher(
-                for: .tripAnnotationChanged
-            )
-        ) { _ in
-            reloadTrips()
-        }
     }
 
-    // MARK: - Toolbar
+    // MARK: Pending Section
 
-    @ToolbarContentBuilder
-    private var toolbarContent: some ToolbarContent {
+    @ViewBuilder
+    private var pendingSection:
+        some View {
 
-        if isEditing {
-            ToolbarItem(
-                placement: .topBarLeading
-            ) {
-                Button {
-                    toggleSelectAllPending()
-                } label: {
-                    Text(
-                        allPendingTripsSelected
-                        ? NSLocalizedString(
-                            "None",
-                            comment: "Deselect all"
-                        )
-                        : NSLocalizedString(
-                            "All",
-                            comment: "Select all"
-                        )
+        if !pendingItems.isEmpty {
+
+            Section {
+
+                ForEach(
+                    pendingItems
+                ) { item in
+
+                    tripRow(
+                        item
                     )
                 }
-                .disabled(
-                    pendingTrips.isEmpty
+
+            } header: {
+
+                sectionHeader(
+                    NSLocalizedString(
+                        "Not Uploaded",
+                        comment:
+                            "Trips not uploaded"
+                    )
                 )
             }
         }
+    }
+
+    // MARK: Uploaded Section
+
+    @ViewBuilder
+    private var uploadedSection:
+        some View {
+
+        if !uploadedItems.isEmpty {
+
+            Section {
+
+                ForEach(
+                    uploadedItems
+                ) { item in
+
+                    tripRow(
+                        item
+                    )
+                }
+
+            } header: {
+
+                sectionHeader(
+                    NSLocalizedString(
+                        "Uploaded",
+                        comment:
+                            "Uploaded trips"
+                    )
+                )
+            }
+        }
+    }
+
+    // MARK: Empty State
+
+    private var emptyState:
+        some View {
+
+        ContentUnavailableView(
+            NSLocalizedString(
+                "No trips",
+                comment:
+                    "No trips"
+            ),
+            systemImage:
+                "bicycle",
+            description:
+                Text(
+                    NSLocalizedString(
+                        "Once trips are recorded, they will appear here.",
+                        comment:
+                            "Empty trips description"
+                    )
+                )
+        )
+        .listRowBackground(
+            Color.clear
+        )
+        .listRowSeparator(
+            .hidden
+        )
+    }
+
+    // MARK: Toolbar
+
+    @ToolbarContentBuilder
+    private var toolbar:
+        some ToolbarContent {
 
         ToolbarItem(
-            placement: .topBarTrailing
+            placement:
+                .topBarTrailing
         ) {
+
             EditButton()
         }
 
         if isEditing {
-            ToolbarItemGroup(
-                placement: .bottomBar
+
+            ToolbarItem(
+                placement:
+                    .topBarLeading
             ) {
 
                 Button {
-                    uploadSelectedTrips()
+                    toggleSelectAll()
                 } label: {
+
+                    Text(
+                        allPendingSelected
+                        ? NSLocalizedString(
+                            "None",
+                            comment:
+                                "Deselect all"
+                        )
+                        : NSLocalizedString(
+                            "All",
+                            comment:
+                                "Select all"
+                        )
+                    )
+                }
+                .disabled(
+                    pendingItems.isEmpty
+                )
+            }
+
+            ToolbarItemGroup(
+                placement:
+                    .bottomBar
+            ) {
+
+                Button {
+                    uploadSelected()
+                } label: {
+
                     if uploadCoordinator.isUploading {
+
                         ProgressView()
-                            .controlSize(.small)
+                            .controlSize(
+                                .small
+                            )
+
                     } else {
+
                         Label(
                             NSLocalizedString(
                                 "Upload",
-                                comment: "Upload"
+                                comment:
+                                    "Upload"
                             ),
                             systemImage:
                                 "icloud.and.arrow.up"
@@ -250,207 +354,140 @@ struct MyTripsView: View {
                     }
                 }
                 .disabled(
-                    selectedPendingTripCount == 0 ||
+                    selectedPendingItems.isEmpty ||
                     uploadCoordinator.isUploading
                 )
 
                 Spacer()
 
                 Button(
-                    role: .destructive
+                    role:
+                        .destructive
                 ) {
-                    deleteSelectedTrips()
+
+                    deleteSelected()
+
                 } label: {
+
                     Label(
                         NSLocalizedString(
                             "Delete",
-                            comment: "Delete"
+                            comment:
+                                "Delete"
                         ),
-                        systemImage: "trash"
+                        systemImage:
+                            "trash"
                     )
                 }
                 .disabled(
-                    !hasSelection ||
+                    selectedItems.isEmpty ||
                     uploadCoordinator.isUploading
                 )
             }
         }
     }
 
-    // MARK: - Section Header
+    // MARK: Section Header
 
     private func sectionHeader(
         _ title: String
     ) -> some View {
+
         Text(title)
             .font(
-                .subheadline.weight(.semibold)
+                .subheadline.weight(
+                    .semibold
+                )
             )
+            .textCase(nil)
     }
 
-    // MARK: - Upload Progress
+    // MARK: Trip Row
 
     @ViewBuilder
-    private var uploadProgressView: some View {
-        VStack(spacing: 6) {
-            HStack(spacing: 10) {
-
-                ProgressView()
-                    .controlSize(.small)
-
-                Text(
-                    NSLocalizedString(
-                        "Uploading trips...",
-                        comment: "Uploading trips"
-                    )
-                )
-                .font(
-                    .subheadline.weight(
-                        .medium
-                    )
-                )
-
-                Spacer()
-
-                Text(
-                    "\(uploadCoordinator.completedCount) / \(uploadCoordinator.totalCount)"
-                )
-                .font(
-                    .subheadline.monospacedDigit()
-                )
-                .foregroundStyle(
-                    .secondary
-                )
-            }
-
-            ProgressView(
-                value:
-                    uploadCoordinator.progress
-            )
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 9)
-        .background(.bar)
-    }
-
-    // MARK: - Selection
-
-    private var selectedPendingTripCount: Int {
-        selectedTripIDs.reduce(
-            into: 0
-        ) { count, identifier in
-            if pendingTrips.contains(
-                where: {
-                    $0.identifier == identifier
-                }
-            ) {
-                count += 1
-            }
-        }
-    }
-
-    private func selectedTrips() -> [Trip] {
-        trips.filter {
-            selectedTripIDs.contains(
-                $0.identifier
-            )
-        }
-    }
-
-    private func selectedPendingTrips() -> [Trip] {
-        selectedTrips().filter {
-            !$0.uploaded
-        }
-    }
-
-    private func toggleSelectAllPending() {
-        let pendingIDs = Set(
-            pendingTrips.map(\.identifier)
-        )
-
-        guard !pendingIDs.isEmpty else {
-            return
-        }
-
-        if allPendingTripsSelected {
-            selectedTripIDs.subtract(
-                pendingIDs
-            )
-        } else {
-            selectedTripIDs.formUnion(
-                pendingIDs
-            )
-        }
-    }
-
-    // MARK: - Trip Row
-
     private func tripRow(
-        for trip: Trip
+        _ item:
+            TripListItem
     ) -> some View {
+
         NavigationLink {
+
             TripEditView(
                 viewModel:
                     TripEditViewModel(
-                        trip: trip
+                        trip:
+                            item.trip
                     )
             )
+
         } label: {
-            CompactTripRow(
-                title:
-                    tripTitle(
-                        for: trip
-                    ),
-                summary:
-                    summaryText(
-                        for: trip
-                    ),
-                isEdited:
-                    trip.edited
+
+            TripRow(
+                item:
+                    item
             )
         }
         .swipeActions(
-            edge: .leading,
-            allowsFullSwipe: false
+            edge:
+                .leading,
+            allowsFullSwipe:
+                false
         ) {
-            if !trip.uploaded {
+
+            if !item.isUploaded {
+
                 Button {
-                    uploadCoordinator.upload(
-                        trips: [trip]
+
+                    uploadSingle(
+                        item.trip
                     )
+
                 } label: {
+
                     Label(
                         NSLocalizedString(
                             "Upload",
-                            comment: "Upload"
+                            comment:
+                                "Upload"
                         ),
                         systemImage:
                             "icloud.and.arrow.up"
                     )
                 }
-                .tint(.accentColor)
+                .tint(
+                    .accentColor
+                )
                 .disabled(
                     uploadCoordinator.isUploading
                 )
             }
         }
         .swipeActions(
-            edge: .trailing,
-            allowsFullSwipe: true
+            edge:
+                .trailing,
+            allowsFullSwipe:
+                true
         ) {
+
             Button(
-                role: .destructive
+                role:
+                    .destructive
             ) {
-                deleteTrip(
-                    trip.identifier
+
+                delete(
+                    item.id
                 )
+
             } label: {
+
                 Label(
                     NSLocalizedString(
                         "Delete",
-                        comment: "Delete"
+                        comment:
+                            "Delete"
                     ),
-                    systemImage: "trash"
+                    systemImage:
+                        "trash"
                 )
             }
             .disabled(
@@ -459,27 +496,280 @@ struct MyTripsView: View {
         }
     }
 
-    // MARK: - Upload
+    // MARK: Loading
 
-    private func uploadSelectedTrips() {
-        let selected =
-            selectedPendingTrips()
+    private func loadTripsIfNeeded()
+        async {
 
-        guard !selected.isEmpty else {
+        guard !hasLoaded else {
+            return
+        }
+
+        await reloadTrips()
+    }
+
+    private func reloadTrips()
+        async {
+
+        guard !isLoading else {
+            return
+        }
+
+        isLoading = true
+        hasLoaded = false
+        selectedTripIDs.removeAll()
+
+        /*
+         Clear the visible list first.
+
+         The important difference from the old implementation:
+         we append trips incrementally instead of waiting until
+         every trip has been loaded and calculated.
+        */
+        items.removeAll(
+            keepingCapacity:
+                true
+        )
+
+        let identifiers =
+            Trip
+                .allStoredIdentifiers()
+                .sorted {
+                    $0.intValue >
+                    $1.intValue
+                }
+
+        var batchCount = 0
+
+        for identifier in identifiers {
+
+            guard
+                !Task.isCancelled
+            else {
+                break
+            }
+
+            guard
+                let trip =
+                    Trip(
+                        fromStorage:
+                            identifier.intValue
+                    )
+            else {
+                continue
+            }
+
+            let baseItem =
+                TripListItem(
+                    trip:
+                        trip,
+                    summary:
+                        nil
+                )
+
+            items.append(
+                baseItem
+            )
+
+            batchCount += 1
+
+            /*
+             Let SwiftUI render the item before continuing.
+             This removes the "several seconds of empty list"
+             feeling.
+            */
+            if batchCount >= 3 {
+
+                batchCount = 0
+
+                await Task.yield()
+            }
+
+            /*
+             Extract only primitive calculation data and
+             perform the mathematical work separately.
+            */
+            await calculateSummary(
+                for:
+                    trip
+            )
+        }
+
+        items.sort {
+            (
+                $0.summary?.startDate ??
+                firstDate(
+                    for:
+                        $0.trip
+                ) ??
+                .distantPast
+            ) >
+            (
+                $1.summary?.startDate ??
+                firstDate(
+                    for:
+                        $1.trip
+                ) ??
+                .distantPast
+            )
+        }
+
+        isLoading = false
+        hasLoaded = true
+    }
+
+    // MARK: Summary Calculation
+
+    private func calculateSummary(
+        for trip: Trip
+    ) async {
+
+        guard
+            !Task.isCancelled
+        else {
+            return
+        }
+
+        /*
+         This short extraction step interacts with the existing
+         Trip / Core Data object graph and therefore stays on
+         the MainActor.
+
+         Only Sendable value types leave this section.
+        */
+        let input =
+            TripSummaryBuilder.makeInput(
+                from:
+                    trip
+            )
+
+        guard
+            !Task.isCancelled
+        else {
+            return
+        }
+
+        /*
+         Pure mathematical calculation happens separately.
+
+         No Trip, NSManagedObject or Core Data object crosses
+         into the detached task.
+        */
+        let summary =
+            await Task.detached(
+                priority:
+                    .utility
+            ) {
+
+                TripSummaryBuilder.calculate(
+                    input:
+                        input
+                )
+
+            }
+            .value
+
+        guard
+            !Task.isCancelled
+        else {
+            return
+        }
+
+        guard
+            let index =
+                items.firstIndex(
+                    where: {
+                        $0.id ==
+                        trip.identifier
+                    }
+                )
+        else {
+            return
+        }
+
+        items[index] =
+            TripListItem(
+                trip:
+                    trip,
+                summary:
+                    summary
+            )
+    }
+
+    // MARK: Selection
+
+    private func toggleSelectAll() {
+
+        let ids =
+            Set(
+                pendingItems.map(
+                    \.id
+                )
+            )
+
+        guard !ids.isEmpty else {
+            return
+        }
+
+        if allPendingSelected {
+
+            selectedTripIDs.subtract(
+                ids
+            )
+
+        } else {
+
+            selectedTripIDs.formUnion(
+                ids
+            )
+        }
+    }
+
+    // MARK: Upload
+
+    private func uploadSingle(
+        _ trip: Trip
+    ) {
+
+        guard
+            !trip.uploaded,
+            !uploadCoordinator.isUploading
+        else {
             return
         }
 
         uploadCoordinator.upload(
-            trips: selected
+            trips:
+                [trip]
         )
     }
 
-    // MARK: - Delete
+    private func uploadSelected() {
 
-    private func deleteTrip(
+        let trips =
+            selectedPendingItems.map(
+                \.trip
+            )
+
+        guard !trips.isEmpty else {
+            return
+        }
+
+        uploadCoordinator.upload(
+            trips:
+                trips
+        )
+    }
+
+    // MARK: Delete
+
+    private func delete(
         _ identifier: Int
     ) {
-        guard !uploadCoordinator.isUploading else {
+
+        guard
+            !uploadCoordinator.isUploading
+        else {
             return
         }
 
@@ -495,23 +785,31 @@ struct MyTripsView: View {
             identifier
         )
 
-        reloadTrips()
+        items.removeAll {
+            $0.id ==
+                identifier
+        }
     }
 
-    private func deleteSelectedTrips() {
-        guard !uploadCoordinator.isUploading else {
+    private func deleteSelected() {
+
+        guard
+            !uploadCoordinator.isUploading
+        else {
             return
         }
 
-        let identifiers =
-            selectedTrips()
-                .map(\.identifier)
+        let ids =
+            Array(
+                selectedTripIDs
+            )
 
-        guard !identifiers.isEmpty else {
+        guard !ids.isEmpty else {
             return
         }
 
-        for identifier in identifiers {
+        for identifier in ids {
+
             AppDelegate
                 .shared()
                 .trips
@@ -521,40 +819,480 @@ struct MyTripsView: View {
                 )
         }
 
+        items.removeAll {
+            ids.contains(
+                $0.id
+            )
+        }
+
         selectedTripIDs.removeAll()
-        reloadTrips()
     }
 
-    // MARK: - Trip Date
+    // MARK: Date
 
-    private func tripDate(
+    private func firstDate(
         for trip: Trip
     ) -> Date? {
+
         guard
             let firstLocation =
-                trip.tripLocations.firstObject
-                as? TripLocation
+                trip.tripLocations
+                    .firstObject
+                    as? TripLocation
         else {
             return nil
         }
 
-        return firstLocation.location.timestamp
+        return firstLocation
+            .location
+            .timestamp
+    }
+}
+
+// MARK: - Trip List Item
+
+private struct TripListItem:
+    Identifiable {
+
+    let trip: Trip
+    let summary: TripSummary?
+
+    var id: Int {
+        trip.identifier
     }
 
-    // MARK: - Trip Title
+    var isUploaded: Bool {
+        trip.uploaded
+    }
+}
 
-    private func tripTitle(
-        for trip: Trip
-    ) -> String {
+// MARK: - Calculation Input
 
-        guard let date =
-                tripDate(for: trip)
-        else {
-            return NSLocalizedString(
-                "Trip",
-                comment: "Trip"
+private struct TripCalculationPoint:
+    Sendable {
+
+    let latitude:
+        Double
+
+    let longitude:
+        Double
+
+    let timestamp:
+        TimeInterval
+
+    let speed:
+        Double
+}
+
+// MARK: - Calculation Input
+
+private struct TripCalculationInput:
+    Sendable {
+
+    let points:
+        [TripCalculationPoint]
+
+    let startDate:
+        Date?
+
+    let endDate:
+        Date?
+}
+
+// MARK: - Trip Summary
+
+private struct TripSummary:
+    Sendable {
+
+    let distanceMeters:
+        Double
+
+    let duration:
+        TimeInterval
+
+    let averageSpeedKmh:
+        Double?
+
+    let maximumSpeedKmh:
+        Double?
+
+    let pointCount:
+        Int
+
+    let startDate:
+        Date?
+
+    let endDate:
+        Date?
+}
+
+// MARK: - Trip Summary Builder
+
+private enum TripSummaryBuilder {
+
+    // MARK: Extract
+
+    static func makeInput(
+        from trip: Trip
+    ) -> TripCalculationInput {
+
+        let locations =
+            (trip.tripLocations as NSArray)
+                .compactMap {
+                    $0 as? TripLocation
+                }
+
+        var points:
+            [TripCalculationPoint] = []
+
+        points.reserveCapacity(
+            locations.count
+        )
+
+        for location in locations {
+
+            let coordinate =
+                location
+                    .location
+                    .coordinate
+
+            let speed =
+                location
+                    .location
+                    .speed
+
+            points.append(
+                TripCalculationPoint(
+                    latitude:
+                        coordinate.latitude,
+                    longitude:
+                        coordinate.longitude,
+                    timestamp:
+                        location
+                            .location
+                            .timestamp
+                            .timeIntervalSince1970,
+                    speed:
+                        speed
+                )
             )
         }
+
+        return TripCalculationInput(
+            points:
+                points,
+            startDate:
+                locations.first?
+                    .location
+                    .timestamp,
+            endDate:
+                locations.last?
+                    .location
+                    .timestamp
+        )
+    }
+
+    // MARK: Calculate
+
+    static func calculate(
+        input:
+            TripCalculationInput
+    ) -> TripSummary {
+
+        guard
+            !input.points.isEmpty
+        else {
+
+            return TripSummary(
+                distanceMeters:
+                    0,
+                duration:
+                    0,
+                averageSpeedKmh:
+                    nil,
+                maximumSpeedKmh:
+                    nil,
+                pointCount:
+                    0,
+                startDate:
+                    input.startDate,
+                endDate:
+                    input.endDate
+            )
+        }
+
+        var distanceMeters =
+            0.0
+
+        var maximumSpeedKmh =
+            0.0
+
+        var previousPoint:
+            TripCalculationPoint?
+
+        for point in input.points {
+
+            if let previousPoint {
+
+                let firstCoordinate =
+                    CLLocationCoordinate2D(
+                        latitude:
+                            previousPoint.latitude,
+                        longitude:
+                            previousPoint.longitude
+                    )
+
+                let secondCoordinate =
+                    CLLocationCoordinate2D(
+                        latitude:
+                            point.latitude,
+                        longitude:
+                            point.longitude
+                    )
+
+                let firstLocation =
+                    CLLocation(
+                        latitude:
+                            firstCoordinate.latitude,
+                        longitude:
+                            firstCoordinate.longitude
+                    )
+
+                let secondLocation =
+                    CLLocation(
+                        latitude:
+                            secondCoordinate.latitude,
+                        longitude:
+                            secondCoordinate.longitude
+                    )
+
+                let segmentDistance =
+                    secondLocation.distance(
+                        from:
+                            firstLocation
+                    )
+
+                if segmentDistance.isFinite &&
+                    segmentDistance >= 0 {
+
+                    distanceMeters +=
+                        segmentDistance
+                }
+            }
+
+            if point.speed.isFinite &&
+                point.speed >= 0 {
+
+                maximumSpeedKmh =
+                    max(
+                        maximumSpeedKmh,
+                        point.speed * 3.6
+                    )
+            }
+
+            previousPoint =
+                point
+        }
+
+        let duration:
+            TimeInterval
+
+        if let startDate =
+            input.startDate,
+           let endDate =
+            input.endDate {
+
+            duration =
+                max(
+                    endDate.timeIntervalSince(
+                        startDate
+                    ),
+                    0
+                )
+
+        } else {
+
+            duration =
+                0
+        }
+
+        let averageSpeed:
+            Double?
+
+        if duration > 0 &&
+            distanceMeters > 0 {
+
+            let hours =
+                duration /
+                3_600
+
+            averageSpeed =
+                hours > 0
+                ? (
+                    distanceMeters /
+                    1_000
+                ) / hours
+                : nil
+
+        } else {
+
+            averageSpeed =
+                nil
+        }
+
+        return TripSummary(
+            distanceMeters:
+                distanceMeters,
+            duration:
+                duration,
+            averageSpeedKmh:
+                averageSpeed,
+            maximumSpeedKmh:
+                maximumSpeedKmh > 0
+                ? maximumSpeedKmh
+                : nil,
+            pointCount:
+                input.points.count,
+            startDate:
+                input.startDate,
+            endDate:
+                input.endDate
+        )
+    }
+}
+
+// MARK: - Trip Row
+
+private struct TripRow:
+    View {
+
+    let item:
+        TripListItem
+
+    var body: some View {
+
+        HStack(
+            alignment:
+                .center,
+            spacing:
+                12
+        ) {
+
+            tripIcon
+
+            VStack(
+                alignment:
+                    .leading,
+                spacing:
+                    4
+            ) {
+
+                Text(
+                    title
+                )
+                .font(
+                    .subheadline.weight(
+                        .semibold
+                    )
+                )
+                .foregroundStyle(
+                    .primary
+                )
+                .lineLimit(
+                    1
+                )
+
+                summaryView
+
+                if let summary =
+                    item.summary,
+                   summary.pointCount > 0 {
+
+                    Text(
+                        detailLine(
+                            summary
+                        )
+                    )
+                    .font(
+                        .caption2
+                    )
+                    .foregroundStyle(
+                        .tertiary
+                    )
+                    .lineLimit(
+                        1
+                    )
+                }
+            }
+
+            Spacer(
+                minLength:
+                    8
+            )
+
+            statusIcon
+        }
+        .padding(
+            .vertical,
+            5
+        )
+    }
+
+    // MARK: Icon
+
+    private var tripIcon:
+        some View {
+
+        Image(
+            systemName:
+                "bicycle"
+        )
+        .font(
+            .system(
+                size:
+                    15,
+                weight:
+                    .medium
+            )
+        )
+        .foregroundStyle(
+            .tint
+        )
+        .frame(
+            width:
+                36,
+            height:
+                36
+        )
+        .background(
+            Color.secondary.opacity(
+                0.09
+            ),
+            in:
+                Circle()
+        )
+    }
+
+    // MARK: Title
+
+    private var title:
+        String {
+
+        guard
+            let date =
+                item.summary?.startDate ??
+                fallbackDate
+        else {
+
+            return NSLocalizedString(
+                "Trip",
+                comment:
+                    "Trip"
+            )
+        }
+
+        let calendar =
+            Calendar.current
 
         let time =
             date.formatted(
@@ -563,198 +1301,309 @@ struct MyTripsView: View {
                     .minute()
             )
 
-        let calendar =
-            Calendar.current
+        if calendar.isDateInToday(
+            date
+        ) {
 
-        if calendar.isDateInToday(date) {
             return String(
-                format: "%@ · %@",
+                format:
+                    "%@ · %@",
                 NSLocalizedString(
                     "Today",
-                    comment: "Today"
+                    comment:
+                        "Today"
                 ),
                 time
             )
         }
 
-        if calendar.isDateInYesterday(date) {
+        if calendar.isDateInYesterday(
+            date
+        ) {
+
             return String(
-                format: "%@ · %@",
+                format:
+                    "%@ · %@",
                 NSLocalizedString(
                     "Yesterday",
-                    comment: "Yesterday"
+                    comment:
+                        "Yesterday"
                 ),
                 time
             )
         }
 
         if calendar.dateInterval(
-            of: .weekOfYear,
-            for: Date()
+            of:
+                .weekOfYear,
+            for:
+                .now
         )?.contains(date) == true {
 
             let weekday =
                 date.formatted(
                     .dateTime
-                        .weekday(.wide)
+                        .weekday(
+                            .wide
+                        )
                 )
 
-            return "\(weekday) · \(time)"
+            return String(
+                format:
+                    "%@ · %@",
+                weekday,
+                time
+            )
         }
 
         return date.formatted(
             .dateTime
                 .day()
-                .month(.wide)
+                .month(
+                    .abbreviated
+                )
                 .year()
                 .hour()
                 .minute()
         )
     }
 
-    // MARK: - Summary
+    private var fallbackDate:
+        Date? {
 
-    private func summaryText(
-        for trip: Trip
-    ) -> String {
-
-        let distance =
-            formattedDistance(
-                trip.length()
-            )
-
-        guard let durationObject =
-                trip.duration()
-        else {
-            return "\(distance) · –"
-        }
-
-        let duration =
-            formatDuration(
-                durationObject.duration
-            )
-
-        guard let speed =
-                averageSpeedText(
-                    distanceInMeters:
-                        trip.length(),
-                    duration:
-                        durationObject.duration
-                )
-        else {
-            return "\(distance) · \(duration)"
-        }
-
-        return "\(distance) · \(duration) · \(speed)"
-    }
-
-    // MARK: - Distance
-
-    private func formattedDistance(
-        _ meters: Int
-    ) -> String {
-
-        let value =
-            max(meters, 0)
-
-        if value >= 1000 {
-            return Measurement(
-                value:
-                    Double(value) / 1000,
-                unit:
-                    UnitLength.kilometers
-            )
-            .formatted(
-                .measurement(
-                    width: .abbreviated,
-                    usage: .road
-                )
-            )
-        }
-
-        return Measurement(
-            value:
-                Double(value),
-            unit:
-                UnitLength.meters
-        )
-        .formatted(
-            .measurement(
-                width: .abbreviated,
-                usage: .road
-            )
-        )
-    }
-
-    // MARK: - Average Speed
-
-    private func averageSpeedText(
-        distanceInMeters:
-            Int,
-        duration:
-            TimeInterval
-    ) -> String? {
-
-        guard distanceInMeters > 0,
-              duration > 0
+        guard
+            let firstLocation =
+                item.trip.tripLocations
+                    .firstObject
+                    as? TripLocation
         else {
             return nil
         }
 
-        let kilometers =
-            Double(distanceInMeters) /
-            1000
+        return firstLocation
+            .location
+            .timestamp
+    }
 
-        let hours =
-            duration / 3600
+    // MARK: Summary
 
-        guard hours > 0 else {
-            return nil
+    @ViewBuilder
+    private var summaryView:
+        some View {
+
+        if let summary =
+            item.summary {
+
+            HStack(
+                spacing:
+                    5
+            ) {
+
+                Text(
+                    formatDistance(
+                        summary.distanceMeters
+                    )
+                )
+
+                Text(
+                    "·"
+                )
+                .foregroundStyle(
+                    .tertiary
+                )
+
+                Text(
+                    formatDuration(
+                        summary.duration
+                    )
+                )
+
+                if let speed =
+                    summary.averageSpeedKmh {
+
+                    Text(
+                        "·"
+                    )
+                    .foregroundStyle(
+                        .tertiary
+                    )
+
+                    Text(
+                        String(
+                            format:
+                                "Ø %.1f km/h",
+                            speed
+                        )
+                    )
+                }
+            }
+            .font(
+                .caption.weight(
+                    .medium
+                )
+            )
+            .monospacedDigit()
+            .foregroundStyle(
+                .secondary
+            )
+            .lineLimit(
+                1
+            )
+
+        } else {
+
+            HStack(
+                spacing:
+                    5
+            ) {
+
+                ProgressView()
+                    .controlSize(
+                        .mini
+                    )
+
+                Text(
+                    NSLocalizedString(
+                        "Calculating…",
+                        comment:
+                            "Trip summary is being calculated"
+                    )
+                )
+            }
+            .font(
+                .caption
+            )
+            .foregroundStyle(
+                .tertiary
+            )
+        }
+    }
+
+    // MARK: Secondary Detail
+
+    private func detailLine(
+        _ summary:
+            TripSummary
+    ) -> String {
+
+        var values:
+            [String] = []
+
+        if let maximum =
+            summary.maximumSpeedKmh {
+
+            values.append(
+                String(
+                    format:
+                        "max %.1f km/h",
+                    maximum
+                )
+            )
         }
 
-        let speed =
-            kilometers / hours
+        if summary.pointCount > 0 {
 
-        return Measurement(
-            value: speed,
-            unit:
-                UnitSpeed.kilometersPerHour
-        )
-        .formatted(
-            .measurement(
-                width: .abbreviated
+            values.append(
+                String(
+                    format:
+                        "%d GPS",
+                    summary.pointCount
+                )
             )
+        }
+
+        return values.joined(
+            separator:
+                " · "
         )
     }
 
-    // MARK: - Duration
+    // MARK: Status
+
+    private var statusIcon:
+        some View {
+
+        Image(
+            systemName:
+                item.isUploaded
+                ? "checkmark.circle.fill"
+                : "icloud.and.arrow.up"
+        )
+        .font(
+            .caption
+        )
+        .foregroundStyle(
+            item.isUploaded
+            ? Color.green
+            : Color.secondary
+        )
+        .accessibilityHidden(
+            true
+        )
+    }
+
+    // MARK: Formatting
+
+    private func formatDistance(
+        _ meters:
+            Double
+    ) -> String {
+
+        let safe =
+            max(
+                meters,
+                0
+            )
+
+        if safe >= 1_000 {
+
+            return String(
+                format:
+                    "%.1f km",
+                safe / 1_000
+            )
+        }
+
+        return String(
+            format:
+                "%.0f m",
+            safe
+        )
+    }
 
     private func formatDuration(
-        _ value: TimeInterval
+        _ duration:
+            TimeInterval
     ) -> String {
 
-        let totalSeconds =
+        let seconds =
             max(
-                Int(value.rounded()),
+                Int(
+                    duration.rounded()
+                ),
                 0
             )
 
         let hours =
-            totalSeconds / 3600
+            seconds / 3_600
 
         let minutes =
-            (totalSeconds % 3600) / 60
+            (
+                seconds %
+                3_600
+            ) / 60
 
-        let seconds =
-            totalSeconds % 60
+        let remaining =
+            seconds % 60
 
         if hours > 0 {
+
             return String(
                 format:
                     "%d:%02d:%02d",
                 hours,
                 minutes,
-                seconds
+                remaining
             )
         }
 
@@ -762,163 +1611,9 @@ struct MyTripsView: View {
             format:
                 "%02d:%02d",
             minutes,
-            seconds
+            remaining
         )
     }
-
-    // MARK: - Reload
-
-    private func reloadTrips() {
-        // Load trips in background for better performance
-        DispatchQueue.global(qos: .userInitiated).async {
-            let loadedTrips =
-                Trip
-                    .allStoredIdentifiers()
-                    .sorted {
-                        $0.compare($1) ==
-                            .orderedAscending
-                    }
-                    .compactMap {
-                        Trip(
-                            fromStorage:
-                                $0.intValue
-                        )
-                    }
-
-            DispatchQueue.main.async {
-                self.trips =
-                    loadedTrips.sorted {
-                        let lhsDate =
-                            self.tripDate(
-                                for: $0
-                            ) ?? .distantPast
-
-                        let rhsDate =
-                            self.tripDate(
-                                for: $1
-                            ) ?? .distantPast
-
-                        return lhsDate > rhsDate
-                    }
-
-                let validIdentifiers =
-                    Set(
-                        self.trips.map(\.identifier)
-                    )
-
-                self.selectedTripIDs.formIntersection(
-                    validIdentifiers
-                )
-            }
-        }
-    }
-}
-
-// MARK: - Compact Trip Row
-
-private struct CompactTripRow: View {
-
-    let title: String
-    let summary: String
-    let isEdited: Bool
-
-    var body: some View {
-        HStack(
-            alignment: .center,
-            spacing: 12
-        ) {
-
-            Image(
-                systemName: "bicycle"
-            )
-            .font(
-                .system(
-                    size: 16,
-                    weight: .medium
-                )
-            )
-            .foregroundStyle(.tint)
-            .frame(
-                width: 34,
-                height: 34
-            )
-            .background(
-                Color.secondary.opacity(0.10),
-                in: Circle()
-            )
-
-            VStack(
-                alignment: .leading,
-                spacing: 2
-            ) {
-
-                Text(title)
-                    .font(
-                        .subheadline.weight(
-                            .semibold
-                        )
-                    )
-                    .foregroundStyle(
-                        .primary
-                    )
-                    .lineLimit(1)
-
-                HStack(
-                    spacing: 4
-                ) {
-
-                    Text(summary)
-
-                    Text("·")
-                        .foregroundStyle(
-                            .tertiary
-                        )
-
-                    Text(
-                        isEdited
-                        ? NSLocalizedString(
-                            "Edited",
-                            comment: "Edited"
-                        )
-                        : NSLocalizedString(
-                            "Not edited",
-                            comment: "Not edited"
-                        )
-                    )
-                }
-                .font(.caption)
-                .foregroundStyle(
-                    .secondary
-                )
-                .lineLimit(1)
-                .monospacedDigit()
-            }
-
-            Spacer(minLength: 0)
-        }
-        .padding(.vertical, 4)
-        .contentShape(Rectangle())
-    }
-}
-
-// MARK: - Notification Names
-
-private extension Notification.Name {
-
-    static let tripEdited =
-        Notification.Name(
-            "tripEdited"
-        )
-
-    static let tripAttributesChanged =
-        Notification.Name(
-            "attributesChanged"
-        )
-
-    static let tripAnnotationChanged =
-        Notification.Name(
-            "annotationChanged"
-        )
 }
 
 // MARK: - Batch Upload Coordinator
@@ -926,73 +1621,99 @@ private extension Notification.Name {
 @MainActor
 final class TripBatchUploadCoordinator:
     NSObject,
-    ObservableObject
-{
+    ObservableObject {
 
-    // MARK: - Published State
-
-    @Published var showAlert = false
-
-    @Published var alertTitle =
-        "SimRa"
-
-    @Published var alertMessage =
-        ""
-
-    @Published private(set) var isUploading =
+    @Published var showAlert =
         false
 
-    @Published private(set) var completedCount =
+    @Published private(set)
+    var alertTitle =
+        "SimRa"
+
+    @Published private(set)
+    var alertMessage =
+        ""
+
+    @Published private(set)
+    var isUploading =
+        false
+
+    @Published private(set)
+    var completedCount =
         0
 
-    @Published private(set) var totalCount =
+    @Published private(set)
+    var totalCount =
         0
 
-    @Published private(set) var progress =
+    @Published private(set)
+    var progress =
         0.0
 
-    // MARK: - Private State
+    private var queue:
+        [Trip] = []
 
-    private var queue: [Trip] = []
-    private var currentIndex = 0
+    private var currentIndex =
+        0
 
-    private var successCount = 0
-    private var failureCount = 0
+    private var successCount =
+        0
 
-    private var finished = false
-    private var processingCurrentTrip = false
+    private var failureCount =
+        0
 
-    // MARK: - Upload
+    private var isProcessing =
+        false
+
+    private var didFinish =
+        false
+
+    // MARK: Upload
 
     func upload(
         trips: [Trip]
     ) {
+
         guard !isUploading else {
             return
         }
 
         queue =
             trips
-                .filter { !$0.uploaded }
+                .filter {
+                    !$0.uploaded
+                }
                 .sorted {
                     $0.identifier <
-                        $1.identifier
+                    $1.identifier
                 }
 
-        currentIndex = 0
-        successCount = 0
-        failureCount = 0
-        finished = false
-        processingCurrentTrip = false
+        currentIndex =
+            0
 
-        completedCount = 0
-        totalCount = queue.count
-        progress = 0
+        successCount =
+            0
 
-        alertTitle = "SimRa"
-        alertMessage = ""
+        failureCount =
+            0
+
+        completedCount =
+            0
+
+        totalCount =
+            queue.count
+
+        progress =
+            0
+
+        isProcessing =
+            false
+
+        didFinish =
+            false
 
         guard !queue.isEmpty else {
+
             alertMessage =
                 NSLocalizedString(
                     "No unuploaded trips selected.",
@@ -1000,64 +1721,80 @@ final class TripBatchUploadCoordinator:
                         "No unuploaded trips selected"
                 )
 
-            showAlert = true
+            showAlert =
+                true
+
             return
         }
 
-        isUploading = true
+        isUploading =
+            true
 
-        uploadNextTrip()
+        uploadNext()
     }
 
-    // MARK: - Error Callback
+    // MARK: Error
 
     @objc
     func uploadTripError(
         _ error: NSError
     ) {
-        guard processingCurrentTrip else {
+
+        guard isProcessing else {
             return
         }
 
-        processingCurrentTrip = false
-        failureCount += 1
+        isProcessing =
+            false
 
-        registerCompletedTrip()
-        uploadNextTrip()
+        failureCount +=
+            1
+
+        registerCompletion()
+
+        uploadNext()
     }
 
-    // MARK: - Completion Callback
+    // MARK: Completion
 
     @objc
     func uploadTripCompleted(
-        _ dict: NSDictionary
+        _ dictionary: NSDictionary
     ) {
-        guard processingCurrentTrip else {
+
+        guard isProcessing else {
             return
         }
 
-        processingCurrentTrip = false
+        isProcessing =
+            false
 
-        if let response =
-            dict["response"]
-            as? HTTPURLResponse,
+        if
+            let response =
+                dictionary["response"]
+                    as? HTTPURLResponse,
             (200...299).contains(
                 response.statusCode
             ) {
 
-            successCount += 1
+            successCount +=
+                1
 
         } else {
-            failureCount += 1
+
+            failureCount +=
+                1
         }
 
-        registerCompletedTrip()
-        uploadNextTrip()
+        registerCompletion()
+
+        uploadNext()
     }
 
-    // MARK: - Progress
+    // MARK: Progress
 
-    private func registerCompletedTrip() {
+    private func registerCompletion() {
+
         completedCount =
             min(
                 completedCount + 1,
@@ -1066,32 +1803,47 @@ final class TripBatchUploadCoordinator:
 
         progress =
             totalCount > 0
-            ? Double(completedCount) /
-                Double(totalCount)
+            ? Double(
+                completedCount
+            ) /
+            Double(
+                totalCount
+            )
             : 0
     }
 
-    // MARK: - Upload Next Trip
+    // MARK: Next
 
-    private func uploadNextTrip() {
-        guard currentIndex < queue.count else {
-            finishBatch()
+    private func uploadNext() {
+
+        guard
+            currentIndex <
+                queue.count
+        else {
+
+            finish()
             return
         }
 
-        guard !processingCurrentTrip else {
+        guard !isProcessing else {
             return
         }
 
         let trip =
-            queue[currentIndex]
+            queue[
+                currentIndex
+            ]
 
-        currentIndex += 1
-        processingCurrentTrip = true
+        currentIndex +=
+            1
+
+        isProcessing =
+            true
 
         trip.uploadFile(
             "ride",
-            withController: self,
+            withController:
+                self,
             error:
                 #selector(
                     uploadTripError(_:)
@@ -1103,35 +1855,44 @@ final class TripBatchUploadCoordinator:
         )
     }
 
-    // MARK: - Finish
+    // MARK: Finish
 
-    private func finishBatch() {
-        guard !finished else {
+    private func finish() {
+
+        guard !didFinish else {
             return
         }
 
-        finished = true
-        processingCurrentTrip = false
-        isUploading = false
+        didFinish =
+            true
 
-        completedCount = totalCount
+        isProcessing =
+            false
+
+        isUploading =
+            false
+
+        completedCount =
+            totalCount
+
         progress =
             totalCount > 0
-            ? 1.0
-            : 0.0
-
-        alertTitle = "SimRa"
+            ? 1
+            : 0
 
         if failureCount == 0 {
 
             if successCount == 1 {
+
                 alertMessage =
                     NSLocalizedString(
                         "Trip uploaded successfully.",
                         comment:
                             "Trip upload success"
                     )
+
             } else {
+
                 alertMessage =
                     String(
                         format:
@@ -1159,12 +1920,38 @@ final class TripBatchUploadCoordinator:
                 )
         }
 
-        showAlert = true
-
-        queue.removeAll(
-            keepingCapacity: false
+        NotificationCenter.default.post(
+            name:
+                .tripAttributesChanged,
+            object:
+                nil
         )
 
-        currentIndex = 0
+        showAlert =
+            true
+
+        queue.removeAll()
+        currentIndex =
+            0
     }
+}
+
+// MARK: - Notifications
+
+private extension Notification.Name {
+
+    static let tripEdited =
+        Notification.Name(
+            "tripEdited"
+        )
+
+    static let tripAttributesChanged =
+        Notification.Name(
+            "attributesChanged"
+        )
+
+    static let tripAnnotationChanged =
+        Notification.Name(
+            "annotationChanged"
+        )
 }

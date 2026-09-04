@@ -17,6 +17,8 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic) BOOL clean;
 @property (nonatomic) BOOL changed;
 
+- (IBAction)cut:(id)sender;
+
 @end
 
 NS_ASSUME_NONNULL_END

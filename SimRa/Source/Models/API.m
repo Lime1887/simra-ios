@@ -9,11 +9,7 @@
 #import "API.h"
 
 #define API_SCHEME @"https:"
-#ifdef DEBUG
-#define API_HOST @"vm1.mcc.tu-berlin.de:8082"
-#else
 #define API_HOST @"simra-backend.3s-rg.de:8082"
-#endif
 #define API_VERSION 13
 
 @implementation API

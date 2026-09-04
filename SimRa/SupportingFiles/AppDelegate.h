@@ -9,9 +9,9 @@
 #import <UIKit/UIKit.h>
 #import <CoreLocation/CoreLocation.h>
 #import <CoreMotion/CoreMotion.h>
-#import "Trips.h"
-#import "Regions.h"
-#import "News.h"
+#import "../Source/Models/Trips/Trips.h"
+#import "../Source/Models/Regions/Regions.h"
+#import "../Source/Models/News/News.h"
 
 @interface AppDelegate : UIResponder <UIApplicationDelegate>
 
@@ -32,4 +32,3 @@
 - (void)openURL:(NSDictionary<NSString*, NSString*> *)dict;
 
 @end
-

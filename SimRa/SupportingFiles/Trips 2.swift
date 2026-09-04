@@ -1,3 +1,4 @@
+#if false
 // Trips.swift
 import Foundation
 
@@ -453,3 +454,5 @@ class Trips: UploaderObject {
         // Write profile to storage
     }
 }
+
+#endif

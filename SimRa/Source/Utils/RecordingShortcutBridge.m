@@ -1,5 +1,4 @@
 #import "RecordingShortcutBridge.h"
-#import "../Modules/MapVC/ViewController.h"
 
 @implementation RecordingShortcutBridge
 

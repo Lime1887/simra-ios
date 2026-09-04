@@ -13,9 +13,9 @@ enum TripsError: Error {
 }
 
 @MainActor
-final class Trips: NSObject, ObservableObject {
+final class TripsManager: NSObject, ObservableObject {
     
-    static let shared = Trips()
+    static let shared = TripsManager()
     
     private let userDefaults = UserDefaults.standard
     private let tripsDict: [Int: Trip] = []
@@ -31,27 +31,27 @@ final class Trips: NSObject, ObservableObject {
     // MARK: - Methods
     
     @objc static var uploaded: Bool {
-        let trips = Trips.shared
+        let trips = TripsManager.shared
         return trips.uploaded
     }
     
     @objc static var version: Int {
-        let trips = Trips.shared
+        let trips = TripsManager.shared
         return trips.version
     }
     
     @objc static var fileHash: String {
-        let trips = Trips.shared
+        let trips = TripsManager.shared
         return trips.fileHash
     }
     
     @objc static var filePasswd: String {
-        let trips = Trips.shared
+        let trips = TripsManager.shared
         return trips.filePasswd
     }
     
     @objc static var tripInfos: [Int: TripInfo] {
-        let trips = Trips.shared
+        let trips = TripsManager.shared
         return trips.tripInfos
     }
     
@@ -77,24 +77,50 @@ final class Trips: NSObject, ObservableObject {
     }
     
     @objc func addTripToStatistics(_ trip: Trip, regionId: Int) {
-        var totalRides = UserDefaults.standard.integer(forKey: "totalRides")
-        var totalDuration = UserDefaults.standard.integer(forKey: "totalDuration")
-        var totalIncidents = UserDefaults.standard.integer(forKey: "totalIncidents")
-        var totalLength = UserDefaults.standard.integer(forKey: "totalLength")
-        var totalIdle = UserDefaults.standard.integer(forKey: "totalIdle")
-        var numberOfScary = UserDefaults.standard.integer(forKey: "numberOfScary")
+        // Berechne Statistiken aus allen Trips (auch ungeladene)
+        recalculateAllStatistics()
+    }
+    
+    // MARK: - Statistics Calculation
+    
+    /// Recalculate all statistics from trips
+    @objc func recalculateAllStatistics() {
+        var totalRides = 0
+        var totalDuration: TimeInterval = 0
+        var totalIncidents = 0
+        var totalLength = 0
+        var totalIdle = 0
+        var numberOfScary = 0
+        var totalSlots = Array(repeating: 0, count: 24)
         
-        totalRides += 1
-        totalDuration += trip.duration
-        totalIncidents += trip.numberOfScary
-        totalLength += trip.length
-        totalIdle += trip.idle
+        // Berechne aus allen Trips
+        for tripInfo in tripInfos.values {
+            totalRides += 1
+            totalIncidents += tripInfo.annotationsCount
+            numberOfScary += tripInfo.validAnnotationsCount
+        }
         
+        // Speichere Statistiken
         UserDefaults.standard.set(totalRides, forKey: "totalRides")
-        UserDefaults.standard.set(totalDuration, forKey: "totalDuration")
+        UserDefaults.standard.set(Int(totalDuration), forKey: "totalDuration")
         UserDefaults.standard.set(totalIncidents, forKey: "totalIncidents")
         UserDefaults.standard.set(totalLength, forKey: "totalLength")
         UserDefaults.standard.set(totalIdle, forKey: "totalIdle")
         UserDefaults.standard.set(numberOfScary, forKey: "numberOfScary")
+        UserDefaults.standard.set(totalSlots, forKey: "totalSlots")
+    }
+    
+    /// Get statistics including unuploaded trips
+    @objc func getStatistics() -> [String: Any] {
+        return [
+            "totalRides": UserDefaults.standard.integer(forKey: "totalRides"),
+            "totalDuration": UserDefaults.standard.integer(forKey: "totalDuration"),
+            "totalIncidents": UserDefaults.standard.integer(forKey: "totalIncidents"),
+            "totalLength": UserDefaults.standard.integer(forKey: "totalLength"),
+            "totalIdle": UserDefaults.standard.integer(forKey: "totalIdle"),
+            "numberOfScary": UserDefaults.standard.integer(forKey: "numberOfScary"),
+            "totalSlots": UserDefaults.standard.array(forKey: "totalSlots") ?? Array(repeating: 0, count: 24)
+        ]
     }
 }
+

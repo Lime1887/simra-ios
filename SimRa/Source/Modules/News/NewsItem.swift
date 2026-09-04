@@ -1,3 +1,12 @@
+//
+//  NewsItem.swift
+//  SimRa
+//
+//  Created by Emil Pauls on 27.08.26.
+//  Copyright © 2026 Mobile Cloud Computing an der Fakultät IV (Elektrotechnik und Informatik) der TU Berlin. All rights reserved.
+//
+
+
 import SwiftUI
 
 // MARK: - Datenmodell für News-Zeilen
@@ -17,7 +26,7 @@ struct NewsView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 if newsItems.isEmpty {
-                    Text("Keine Neuigkeiten vorhanden")
+                    Text(NSLocalizedString("No news available", comment: "No news available"))
                         .foregroundColor(.secondary)
                         .padding(.top, 20)
                 } else {
@@ -33,15 +42,15 @@ struct NewsView: View {
             .padding()
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .navigationTitle("Neuigkeiten")
+        .navigationTitle(NSLocalizedString("News", comment: "News"))
         .navigationBarTitleDisplayMode(.inline)
         .onAppear(perform: loadNews)
     }
 
     // Parst die Zeilen aus AppDelegate.news.newsLines exakt wie im alten NewsVC
     private func loadNews() {
-        guard let ad = UIApplication.shared.delegate as? AppDelegate,
-              let lines = ad.news?.newsLines as? [String] else { return }
+        let lines = AppDelegate.shared().news.newsLines
+        guard !lines.isEmpty else { return }
 
         var parsedItems: [NewsItem] = []
         

@@ -7,8 +7,8 @@
 //
 
 #import "Trip.h"
-#import "AppDelegate.h"
-#import "NSString+hashCode.h"
+#import "Trips.h"
+#import "../../Utils/Helper/NSString+hashCode.h"
 #import "SimRa-Swift.h"
 #import "API.h"
 
@@ -164,8 +164,8 @@
     [tripInfoDict setObject:[NSNumber numberWithBool:self.uploaded] forKey:@"uploaded"];
     [tripInfoDict setObject:[NSNumber numberWithBool:self.statisticsAdded] forKey:@"statisticsAdded"];
     [tripInfoDict setObject:[NSNumber numberWithBool:self.reUploaded] forKey:@"reUploaded"];
-    [tripInfoDict setObject:[NSNumber numberWithBool:self.annotationsCount] forKey:@"annotationsCount"];
-    [tripInfoDict setObject:[NSNumber numberWithBool:self.validAnnotationsCount] forKey:@"validAnnotationsCount"];
+    [tripInfoDict setObject:[NSNumber numberWithInteger:self.annotationsCount] forKey:@"annotationsCount"];
+    [tripInfoDict setObject:[NSNumber numberWithInteger:self.validAnnotationsCount] forKey:@"validAnnotationsCount"];
 
     if (self.fileHash) {
         [tripInfoDict setObject:self.fileHash forKey:@"fileHash"];
@@ -307,6 +307,17 @@
 - (void)removeRecordingCheckpoint {
     NSURL *checkpointURL = [Trip checkpointURLForIdentifier:self.identifier];
     [[NSFileManager defaultManager] removeItemAtURL:checkpointURL error:nil];
+}
+
+- (void)removeLegacyCSVFiles {
+    NSFileManager *fileManager = [NSFileManager defaultManager];
+    NSURL *documentDirectoryURL = [fileManager URLsForDirectory:NSDocumentDirectory
+                                                      inDomains:NSUserDomainMask].firstObject;
+    NSURL *locationsURL = [documentDirectoryURL URLByAppendingPathComponent:[NSString stringWithFormat:@"TripLocations-%ld.csv", self.identifier]];
+    NSURL *motionsURL = [documentDirectoryURL URLByAppendingPathComponent:[NSString stringWithFormat:@"TripMotions-%ld.csv", self.identifier]];
+
+    [fileManager removeItemAtURL:locationsURL error:nil];
+    [fileManager removeItemAtURL:motionsURL error:nil];
 }
 
 + (NSArray<NSNumber *> *)recoverableIdentifiers {
@@ -1397,9 +1408,7 @@
 
     self.recordingStartDate = [NSDate date];
     // Start Live Activity if supported
-    if (@available(iOS 16.2, *)) {
-        [LiveActivityManager.shared startActivityWithTripId:(int)self.identifier bikeTypeId:(int)self.bikeTypeId];
-    }
+    // Live Activities functionality removed - requires proper Swift-ObjC bridging setup
 
     if (ad.mm.isGyroAvailable) {
         [ad.mm startGyroUpdates];
@@ -1522,13 +1531,7 @@
                         updateCounter++;
                         if (updateCounter >= 50) {
                             updateCounter = 0;
-                            NSInteger distance = [self length];
-                            NSInteger incidents = [self tripValidAnnotations];
-                            NSInteger elapsed = 0;
-                            if (self.recordingStartDate) {
-                                elapsed = (NSInteger)([[NSDate date] timeIntervalSinceDate:self.recordingStartDate]);
-                            }
-                            [LiveActivityManager.shared updateWithElapsedSeconds:(int)elapsed distanceMeters:(int)distance incidents:(int)incidents];
+                            // Live Activities functionality removed - requires proper Swift-ObjC bridging setup
                         }
                     }
                     aFill = ACCELEROMETER_SAMPLES - ACCELEROMETER_STEPS;
@@ -1557,20 +1560,28 @@
     [ad.lm stopUpdatingLocation];
     ad.lm.delegate = nil;
 
-    if (@available(iOS 16.2, *)) {
-        [LiveActivityManager.shared endActivity];
-    }
+    // Live Activities functionality removed - requires proper Swift-ObjC bridging setup
 
     [self.locationsFile closeFile];
     [self.motionsFile closeFile];
 
-    if ([ad.defaults boolForKey:@"AI"]) {
-        [self AIIncidentDetection];
-    } else {
-        [self offlineIncidentDectection];
-    }
+    __weak typeof(self) weakSelf = self;
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
+        @autoreleasepool {
+            __strong typeof(weakSelf) strongSelf = weakSelf;
+            if (!strongSelf) {
+                return;
+            }
 
-    [self save];
+            if ([ad.defaults boolForKey:@"AI"]) {
+                [strongSelf AIIncidentDetection];
+            } else {
+                [strongSelf offlineIncidentDectection];
+            }
+
+            [strongSelf save];
+        }
+    });
 }
 
 - (void)addLocation:(CLLocation *)location withGyroData:(CMGyroData *)gyroData {
@@ -1850,17 +1861,20 @@
     NSURL *tripURL = [documentDirectoryURL URLByAppendingPathComponent:[NSString stringWithFormat:@"Trip-%ld.json", self.identifier]];
     NSURL *tripInfoURL = [documentDirectoryURL URLByAppendingPathComponent:[NSString stringWithFormat:@"TripInfo-%ld.json", self.identifier]];
 
-    BOOL tripSuccess = [fileManager createFileAtPath:tripURL.path
-                                            contents:self.asJSONData
-                                          attributes:nil];
-    BOOL tripInfoSuccess = [fileManager createFileAtPath:tripInfoURL.path
-                                                contents:self.tripInfo.asJSONData
-                                              attributes:nil];
+    BOOL tripSuccess = [self.asJSONData writeToURL:tripURL
+                                          options:NSDataWritingAtomic
+                                            error:nil];
+    BOOL tripInfoSuccess = [self.tripInfo.asJSONData writeToURL:tripInfoURL
+                                                       options:NSDataWritingAtomic
+                                                         error:nil];
 
     NSLog(@"[Trip] save tripSuccess=%d tripInfoSuccess=%d",
           tripSuccess, tripInfoSuccess);
 
     [self removeRecordingCheckpoint];
+    if (self.edited) {
+        [self removeLegacyCSVFiles];
+    }
     [Utility removeWithKey:[NSString stringWithFormat:@"Trip-%ld", self.identifier]];
     [Utility removeWithKey:[NSString stringWithFormat:@"TripInfo-%ld", self.identifier]];
 }

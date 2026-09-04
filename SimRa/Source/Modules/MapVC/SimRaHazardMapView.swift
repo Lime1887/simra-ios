@@ -6,15 +6,6 @@
 //  Copyright © 2026 Mobile Cloud Computing an der Fakultät IV (Elektrotechnik und Informatik) der TU Berlin. All rights reserved.
 //
 
-
-```swift
-//
-//  SimRaHazardMapView.swift
-//  SimRa
-//
-//  Displays the real SimRa Result Viewer street safety map.
-//
-
 import SwiftUI
 import WebKit
 
@@ -33,13 +24,13 @@ struct SimRaHazardMapView: View {
             .ignoresSafeArea(
                 edges: .bottom
             )
-            .navigationTitle("Hazard Map")
+            .navigationTitle(NSLocalizedString("Hazard Map", comment: "Hazard Map"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(
                     placement: .topBarTrailing
                 ) {
-                    Button("Done") {
+                    Button(NSLocalizedString("Done", comment: "Done")) {
                         dismiss()
                     }
                 }
@@ -192,4 +183,3 @@ private struct SimRaHazardWebView:
         }
     }
 }
-```

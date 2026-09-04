@@ -26,4 +26,27 @@ public class API: NSObject {
         print("APIprefix: \(prefix)")
         return prefix
     }
+    
+    public static func apiPrefix() -> String {
+        return Bundle.main.object(forInfoDictionaryKey: "API_PREFIX") as? String ?? "https://simra-backend.3s-rg.de:4998"
+    }
+    
+    public static var apiShortPrefix: String? {
+        apiPrefix()
+    }
+    
+    public static func clientHash() -> String {
+        // Centralized client hash provider; mirrors String.clientHash extension
+        let df = DateFormatter()
+        df.dateFormat = "dd.MM.yyyy"
+        let dateString = df.string(from: Date())
+        let suffix = "_simra"
+        let client = dateString + suffix
+        // Java-like hashCode based on UTF-16 code units
+        var hash: UInt32 = 0
+        let utf16Chars = Array(client.utf16)
+        if let first = utf16Chars.first { hash = UInt32(first) }
+        for i in 1..<utf16Chars.count { hash = hash &* 31 &+ UInt32(utf16Chars[i]) }
+        return String(format: "%08x", hash)
+    }
 }

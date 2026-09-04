@@ -1,19 +1,26 @@
+//
+//  SimRaApp.swift
+//  SimRa
+//
+//  Created by Emil Pauls on 27.08.26.
+//  Copyright © 2026 Mobile Cloud Computing an der Fakultät IV (Elektrotechnik und Informatik) der TU Berlin. All rights reserved.
+//
+
+
 import SwiftUI
 import CoreLocation
 import CoreMotion
 
 @main
 struct SimRaApp: App {
+    @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var bluetoothObserver = BluetoothObserver()
-
-    init() {
-        setupPreferences()
-        applySystemBarAppearance()
-    }
-
+    @AppStorage("appAppearance") private var appAppearance: String = "auto"
+    
     var body: some Scene {
         WindowGroup {
             MainView()
+                .preferredColorScheme(colorScheme)
                 .alert("SimRa", isPresented: $bluetoothObserver.showDisconnectAlert) {
                     Button("Return", role: .cancel) { }
                 } message: {
@@ -25,53 +32,17 @@ struct SimRaApp: App {
         }
     }
 
-    // MARK: - Initial Setup
+    // MARK: - Color Scheme
 
-    private func setupPreferences() {
-        Utility.createSimraPrefs()
-        Utility.createAppsPrefs()
-        Utility.createProfilePrefs()
-        Utility.createKeyPrefs()
-
-        let defaults = UserDefaults.standard
-        print("\(defaults.dictionaryRepresentation())")
-        print("Path to user preference file: \(Utility.getDocumentDirectory() ?? "")")
-
-        // Vorbereitung der Singleton-/Core-Dienste
-        let _ = Regions()
-        let _ = News()
-        
-        let lm = CLLocationManager()
-        lm.requestWhenInUseAuthorization()
-
-        let _ = CMMotionManager()
-        let trips = Trips()
-        trips.save()
-    }
-
-    private func applySystemBarAppearance() {
-        let barButtonTitleColor = UIColor.label
-
-        UIBarButtonItem.appearance().setTitleTextAttributes([
-            .foregroundColor: barButtonTitleColor
-        ], for: .normal)
-
-        let navigationAppearance = UINavigationBarAppearance()
-        navigationAppearance.configureWithDefaultBackground()
-        navigationAppearance.shadowColor = .clear
-        
-        let navigationBar = UINavigationBar.appearance()
-        navigationBar.standardAppearance = navigationAppearance
-        navigationBar.compactAppearance = navigationAppearance
-        navigationBar.scrollEdgeAppearance = navigationAppearance
-
-        let toolbarAppearance = UIToolbarAppearance()
-        toolbarAppearance.configureWithDefaultBackground()
-        toolbarAppearance.shadowColor = .clear
-        
-        let toolbar = UIToolbar.appearance()
-        toolbar.standardAppearance = toolbarAppearance
-        toolbar.scrollEdgeAppearance = toolbarAppearance
+    private var colorScheme: ColorScheme? {
+        switch appAppearance {
+        case "light":
+            return .light
+        case "dark":
+            return .dark
+        default:
+            return nil // Follow system
+        }
     }
 
     // MARK: - Deeplink Handling (simra://)
@@ -85,6 +56,20 @@ struct SimRaApp: App {
             } else if url.path == "/stop" {
                 _ = RecordingShortcutBridge.stopRecording()
             }
+        } else if url.host == "incident" {
+            let components = URLComponents(
+                url: url,
+                resolvingAgainstBaseURL: false
+            )
+            let incidentType = Int(
+                components?.queryItems?.first {
+                    $0.name == "type"
+                }?.value ?? "0"
+            ) ?? 0
+            _ = RecordingShortcutBridge.markIncident(
+                incidentType,
+                source: "Live Activity"
+            )
         }
     }
 }

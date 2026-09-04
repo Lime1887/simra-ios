@@ -7,11 +7,8 @@
 //
 
 #import "OpenBikeSensorConfigurationViewController.h"
-#import "AppDelegate.h"
 #import "SimRa-Swift.h"
 #import "DeviceTableViewCell.h"
-#import <Loaf/Loaf-Swift.h>
-#import <TTGSnackbar/TTGSnackbar-Swift.h>
 #import <math.h>
 
 #define HEIGHT_DEVICE_VIEW 100
@@ -275,14 +272,21 @@
 
 -(void)showConfirmationToConnectForRow:(int)row{
     if ([_discoveredDevices count] != 0 || testing == YES){
-    [UIAlertController showAlertWithTitle:@"SimRa" message:@"Are you sure you want to connect with this device?" style:UIAlertControllerStyleAlert buttonFirstTitle:@"Return" buttonSecondTitle:@"Connect" buttonFirstAction:^{} buttonSecondAction:^{
-        if (self->testing == NO){
-        PeripheralInfos *peripheralInfo = self.discoveredDevices[row];
-            [self.bleManager connectPeripheral:peripheralInfo.peripheral];
-            [self.bleManager stopScanPeripheral];
-            [self.activityIndicator stopAnimating];
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"SimRa" message:@"Are you sure you want to connect with this device?" preferredStyle:UIAlertControllerStyleAlert];
+    [alert addAction:[UIAlertAction actionWithTitle:@"Return" style:UIAlertActionStyleCancel handler:nil]];
+    __weak typeof(self) weakSelf = self;
+    [alert addAction:[UIAlertAction actionWithTitle:@"Connect" style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *action) {
+        typeof(self) strongSelf = weakSelf;
+        if (strongSelf == nil || strongSelf->testing != NO) {
+            return;
         }
-    } over:self];
+
+        PeripheralInfos *peripheralInfo = strongSelf.discoveredDevices[row];
+        [strongSelf.bleManager connectPeripheral:peripheralInfo.peripheral];
+        [strongSelf.bleManager stopScanPeripheral];
+        [strongSelf.activityIndicator stopAnimating];
+    }]];
+    [self presentViewController:alert animated:YES completion:nil];
     }
   
 }

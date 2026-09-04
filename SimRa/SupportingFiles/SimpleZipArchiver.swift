@@ -2,8 +2,8 @@
 //  SimpleZipArchiver.swift
 //  SimRa
 //
-//  Lightweight ZIP writer.
-//  No CocoaPods / external dependencies.
+//  Created by Emil Pauls on 01.09.26.
+//  Copyright © 2026 Mobile Cloud Computing an der Fakultät IV (Elektrotechnik und Informatik) der TU Berlin. All rights reserved.
 //
 
 import Foundation

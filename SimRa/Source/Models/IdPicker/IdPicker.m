@@ -44,7 +44,7 @@
 
     UIBarButtonItem *doneButton;
     if (@available(iOS 13.0, *)) {
-        doneButton = [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"checkmark.circle"]
+        doneButton = [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"checkmark"]
                                                       style:UIBarButtonItemStyleDone
                                                      target:self
                                                      action:@selector(done:)];

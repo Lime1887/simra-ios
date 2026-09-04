@@ -7,7 +7,6 @@
 //
 
 #import "NewsVC.h"
-#import "AppDelegate.h"
 #import "News.h"
 
 @interface NewsVC ()

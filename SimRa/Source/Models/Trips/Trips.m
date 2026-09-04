@@ -7,9 +7,9 @@
 //
 
 #import "Trips.h"
-#import "AppDelegate.h"
-#import "NSString+hashCode.h"
+#import "../../Utils/Helper/NSString+hashCode.h"
 #import "SimRa-Swift.h"
+#import "../Regions/Regions.h"
 
 @interface NSString (withRegionId)
 - (NSString *)withRegionId:(NSInteger)regionId;
@@ -178,8 +178,9 @@
     [self saveUploadedTripToPlist];
 }
 
--(void)saveUploadedTripToPlist{
-    [Utility writeRegionBasedProfile];
+- (void)saveUploadedTripToPlist{
+    AppDelegate *ad = [AppDelegate sharedDelegate];
+    [Utility writeRegionBasedProfileWithRegionId:ad.regions.regionId];
 }
 - (void)addTripToStatistics:(Trip *)trip {
     AppDelegate *ad = [AppDelegate sharedDelegate];

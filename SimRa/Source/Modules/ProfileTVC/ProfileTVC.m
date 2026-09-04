@@ -9,7 +9,6 @@
 
 #import "ProfileTVC.h"
 #import "IdPicker.h"
-#import "AppDelegate.h"
 #import "NSTimeInterval+hms.h"
 #import "DSBarChart.h"
 

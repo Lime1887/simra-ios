@@ -1,3 +1,12 @@
+//
+//  OBSConfigView.swift
+//  SimRa
+//
+//  Created by Emil Pauls on 27.08.26.
+//  Copyright © 2026 Mobile Cloud Computing an der Fakultät IV (Elektrotechnik und Informatik) der TU Berlin. All rights reserved.
+//
+
+
 import SwiftUI
 import CoreBluetooth
 
@@ -7,23 +16,23 @@ struct OBSConfigView: View {
     var body: some View {
         List {
             if vm.isConnected {
-                Section(header: Text("Sensor Details")) {
+                Section(header: Text(NSLocalizedString("Sensor Details", comment: "Sensor Details"))) {
                     HStack {
-                        Text("Left Offset")
+                        Text(NSLocalizedString("Left Offset", comment: "Left Offset"))
                         Spacer()
                         Text(vm.leftOffset)
                             .foregroundColor(.secondary)
                     }
                     
                     HStack {
-                        Text("Right Offset")
+                        Text(NSLocalizedString("Right Offset", comment: "Right Offset"))
                         Spacer()
                         Text(vm.rightOffset)
                             .foregroundColor(.secondary)
                     }
                     
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("Distance Indicator")
+                        Text(NSLocalizedString("Distance Indicator", comment: "Distance Indicator"))
                             .font(.caption)
                             .foregroundColor(.secondary)
                         
@@ -37,21 +46,21 @@ struct OBSConfigView: View {
                     } label: {
                         HStack {
                             Spacer()
-                            Text("Disconnect Sensor")
+                            Text(NSLocalizedString("Disconnect Sensor", comment: "Disconnect Sensor"))
                             Spacer()
                         }
                     }
                 }
             } else {
-                Section(header: Text("Discovered Devices")) {
+                Section(header: Text(NSLocalizedString("Discovered Devices", comment: "Discovered Devices"))) {
                     if vm.isScanning && vm.discoveredDevices.isEmpty {
                         HStack(spacing: 12) {
                             ProgressView()
-                            Text("Scanning for OpenBikeSensor...")
+                            Text(NSLocalizedString("Scanning for OpenBikeSensor...", comment: "Scanning for OpenBikeSensor..."))
                                 .foregroundColor(.secondary)
                         }
                     } else if vm.discoveredDevices.isEmpty {
-                        Text("No devices found")
+                        Text(NSLocalizedString("No devices found", comment: "No devices found"))
                             .foregroundColor(.secondary)
                     } else {
                         ForEach(vm.discoveredDevices, id: \.identifier) { device in
@@ -60,7 +69,7 @@ struct OBSConfigView: View {
                             } label: {
                                 HStack {
                                     VStack(alignment: .leading) {
-                                        Text(device.name ?? "Unknown Device")
+                                        Text(device.name ?? NSLocalizedString("Unknown Device", comment: "Unknown Device"))
                                             .font(.body)
                                             .foregroundColor(.primary)
                                         Text(device.identifier.uuidString)
@@ -78,7 +87,7 @@ struct OBSConfigView: View {
                 }
             }
         }
-        .navigationTitle("OpenBikeSensor")
+        .navigationTitle(NSLocalizedString("OpenBikeSensor", comment: "OpenBikeSensor"))
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
             vm.startSetup()
@@ -92,7 +101,7 @@ struct OBSConfigView: View {
 // MARK: - ViewModel
 
 @MainActor
-final class OBSConfigViewModel: ObservableObject, BluetoothDelegate {
+final class OBSConfigViewModel: NSObject, ObservableObject, BluetoothDelegate {
     @Published var isConnected = false
     @Published var isScanning = false
     @Published var discoveredDevices: [CBPeripheral] = []

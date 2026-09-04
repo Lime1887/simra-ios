@@ -9,7 +9,6 @@
 
 #import "AnnotationTVC.h"
 #import "TripDetailTVC.h"
-#import "AppDelegate.h"
 #import "SimRa-Swift.h"
 
 @interface TripEditVC () <TripEditViewHostDelegate>
@@ -29,6 +28,7 @@
 
     self.view.backgroundColor = UIColor.systemBackgroundColor;
 
+    [self setupNavigationItems];
     [self setupSwiftUIView];
 }
 
@@ -109,6 +109,38 @@
 
 #pragma mark - Navigation
 
+- (void)setupNavigationItems
+{
+    self.navigationItem.title =
+        NSLocalizedString(@"Edit trip", @"Trip edit navigation title");
+
+    UIBarButtonItem *infoButton =
+        [[UIBarButtonItem alloc]
+         initWithImage:[UIImage systemImageNamed:@"info.circle"]
+         style:UIBarButtonItemStylePlain
+         target:self
+         action:@selector(showTripDetail)];
+
+    UIBarButtonItem *trimButton =
+        [[UIBarButtonItem alloc]
+         initWithTitle:NSLocalizedString(@"Schneiden", @"Trim trip button title")
+         style:UIBarButtonItemStyleDone
+         target:self
+         action:@selector(cut:)];
+
+    self.navigationItem.rightBarButtonItems = @[
+        trimButton,
+        infoButton
+    ];
+}
+
+- (IBAction)cut:(id)sender
+{
+    if ([self.hostingController respondsToSelector:@selector(performTrim)]) {
+        [self.hostingController performTrim];
+    }
+}
+
 - (void)tripEditViewHostDidRequestDetails:(TripEditViewHostController *)host
 {
     [self showTripDetail];
@@ -167,19 +199,56 @@
     }
 }
 
+#pragma mark - Persistence Helper
+
+/*
+ Schreibt den aktuellen Trip-Zustand (inkl. der im Editor gewählten
+ Gefahren-Art) auf die Platte.
+
+ -[Trip save] serialisiert die Annotationen vollständig. `edited` wird hier
+ ABSICHTLICH nicht gesetzt: Annotationen verändern die Strecke nicht, daher
+ soll die Roh-CSV (Beschleunigungs-/OBS-Daten) erhalten bleiben. Würde `edited`
+ gesetzt, entfernt -[Trip save] via -removeLegacyCSVFiles die CSV-Dateien –
+ und da die Motion-Daten nur dort liegen, gingen sie verloren.
+*/
+- (void)persistTripAnnotations
+{
+    if (!self.trip) {
+        return;
+    }
+
+    [self.trip save];
+}
+
 #pragma mark - Unwind
 
 - (IBAction)annotationChanged:(UIStoryboardSegue *)unwindSegue
 {
+    // FIX: Im Annotation-Editor gewählte Gefahren-Art sofort persistieren,
+    // damit sie einen App-Neustart übersteht.
+    if ([unwindSegue.sourceViewController isKindOfClass:[AnnotationTVC class]]) {
+
+        AnnotationTVC *source =
+            (AnnotationTVC *)unwindSegue.sourceViewController;
+
+        if (source.changed) {
+            [self persistTripAnnotations];
+        }
+    } else {
+        [self persistTripAnnotations];
+    }
+
     [self reloadSwiftUIView];
 }
 
 - (IBAction)attributesChanged:(UIStoryboardSegue *)unwindSegue
 {
+    // FIX: Auch Detail-/Attribut-Änderungen sichern.
+    [self persistTripAnnotations];
+
     [self reloadSwiftUIView];
 }
 
 // Previously contained SwiftUI bridge code for modern UI components, now relocated to Swift files.
 
 @end
-

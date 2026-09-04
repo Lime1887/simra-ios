@@ -7,7 +7,7 @@
 //
 
 import CoreBluetooth
-import TTGSnackbar
+import UIKit
 @objc public class BluetoothManager : NSObject, CBCentralManagerDelegate, CBPeripheralDelegate {
     @objc var _manager : CBCentralManager?
     @objc var delegate : BluetoothDelegate?
@@ -117,11 +117,7 @@ import TTGSnackbar
     @objc func showConnectedState(){
         guard connectedPeripheral != nil else { return }
         guard let peripheralName = connectedPeripheral?.name else { return }
-        let snackbar = TTGSnackbar(message: "\(peripheralName) connected", duration: .middle)
-        snackbar.cornerRadius = 2
-        snackbar.backgroundColor = UIColor.green
-        snackbar.animationType = .slideFromTopBackToTop
-        snackbar.show()
+        showStatusMessage("\(peripheralName) connected", backgroundColor: .green)
     }
     /**
      The method displays that the peripheral is disconnected
@@ -129,11 +125,40 @@ import TTGSnackbar
     @objc func showDisconnectedState(){
         guard connectedPeripheral != nil else { return }
         guard let peripheralName = connectedPeripheral?.name else { return }
-        let snackbar = TTGSnackbar(message: "\(peripheralName) disconnected", duration: .middle)
-        snackbar.cornerRadius = 2
-        snackbar.backgroundColor = UIColor.red
-        snackbar.animationType = .slideFromTopBackToTop
-        snackbar.show()
+        showStatusMessage("\(peripheralName) disconnected", backgroundColor: .red)
+    }
+
+    private func showStatusMessage(_ message: String, backgroundColor: UIColor) {
+        DispatchQueue.main.async {
+            guard let presenter = self.topViewController() else {
+                print(message)
+                return
+            }
+
+            let alert = UIAlertController(title: nil, message: message, preferredStyle: .alert)
+            alert.view.tintColor = backgroundColor
+            presenter.present(alert, animated: true)
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                alert.dismiss(animated: true)
+            }
+        }
+    }
+
+    private func topViewController() -> UIViewController? {
+        let rootViewController: UIViewController? = {
+            if let scene = UIApplication.shared.connectedScenes.first(where: { $0.activationState == .foregroundActive }) as? UIWindowScene {
+                return scene.windows.first(where: { $0.isKeyWindow })?.rootViewController
+            }
+            return nil
+        }()
+        var topViewController = rootViewController
+
+        while let presented = topViewController?.presentedViewController {
+            topViewController = presented
+        }
+
+        return topViewController
     }
     /**
      The method provides for the user who want to obtain the descriptor
@@ -396,3 +421,4 @@ import TTGSnackbar
         return NSNumber(value: lsb)
     }
 }
+

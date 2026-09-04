@@ -2,8 +2,8 @@
 //  BLEManager.swift
 //  SimRa
 //
-//  Created by Hamza Khan on 15/07/2021[cite: 12, 13].
-//  Copyright © 2021-2026 Mobile Cloud Computing an der Fakultät IV (Elektrotechnik und Informatik) der TU Berlin[cite: 12, 13]. All rights reserved.
+//  Created by Emil Pauls on 27.08.26.
+//  Copyright © 2026 Mobile Cloud Computing an der Fakultät IV (Elektrotechnik und Informatik) der TU Berlin. All rights reserved.
 //
 
 import Foundation
@@ -19,7 +19,7 @@ public class BLEManager: NSObject {
         return shared
     }
     
-    public var someProperty: String = "Default Property Value"[cite: 13]
+    public var someProperty: String = "Default Property Value"
     
     override private init() {
         super.init()

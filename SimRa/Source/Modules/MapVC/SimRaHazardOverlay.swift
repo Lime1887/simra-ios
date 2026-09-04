@@ -1,39 +1,89 @@
 //
-//  SimRaHazardService.swift
+//  SimRaHazardOverlay.swift
 //  SimRa
 //
-//  Loads the real SimRa street safety map from the
-//  current Result Viewer infrastructure.
+//  Real SimRa hazard-map data.
+//
+//  Street geometry:
+//  /assets/maplibre/street-map.json
+//
+//  Safety colors:
+//  /api/safety-metrics/region-map
+//
+//  The current SimRa frontend defines the street grid as:
+//      highway: string
+//      osm_id: number
+//      way: string
+//
+//  `way` is a serialized GeoJSON LineString.
 //
 
 import Foundation
 import MapKit
 import UIKit
 
-// MARK: - Public Models
+// MARK: - Public Overlay
 
 struct SimRaHazardOverlay: Identifiable {
+
     let id: Int
     let polyline: MKPolyline
     let color: UIColor
 }
 
-enum SimRaHazardServiceError: LocalizedError {
+// MARK: - Internal Street
+
+private struct SimRaStreet {
+
+    let id: Int
+
+    let coordinates:
+        [CLLocationCoordinate2D]
+
+    let boundingBox:
+        MKMapRect
+}
+
+// MARK: - Errors
+
+enum SimRaHazardServiceError:
+    LocalizedError
+{
+
     case invalidResponse
     case httpStatus(Int)
     case invalidStreetMap
     case noStreetData
+    case noHazardData
 
     var errorDescription: String? {
+
         switch self {
+
         case .invalidResponse:
-            return "SimRa returned an invalid response."
+
+            return
+                "SimRa returned an invalid response."
+
         case .httpStatus(let status):
-            return "SimRa returned HTTP \(status)."
+
+            return
+                "SimRa returned HTTP \(status)."
+
         case .invalidStreetMap:
-            return "The SimRa street map could not be decoded."
+
+            return
+                "The SimRa street map could not be decoded."
+
         case .noStreetData:
-            return "No SimRa street geometry is available."
+
+            return
+                "No SimRa street data is available."
+
+        case .noHazardData:
+
+            return
+                "No SimRa hazard data is available."
         }
     }
 }
@@ -42,531 +92,1134 @@ enum SimRaHazardServiceError: LocalizedError {
 
 final class SimRaHazardService {
 
-    static let shared = SimRaHazardService()
+    static let shared =
+        SimRaHazardService()
 
-    private let session: URLSession
+    private let session:
+        URLSession
 
-    private let baseURL = URL(string: "https://simra.3s-rg.de")!
+    private let baseURL =
+        URL(
+            string:
+                "https://simra.3s-rg.de"
+        )!
 
-    private var streetGridCache: [Int: [CLLocationCoordinate2D]]?
-    private var colorCache: [Int: UIColor]?
+    private let lock =
+        NSLock()
+
+    private var streetCache:
+        [SimRaStreet]?
+
+    private var colorCache:
+        [Int: UIColor]?
 
     private init() {
-        let configuration = URLSessionConfiguration.default
-        configuration.timeoutIntervalForRequest = 30
-        configuration.timeoutIntervalForResource = 60
-        configuration.waitsForConnectivity = true
 
-        self.session = URLSession(configuration: configuration)
+        let configuration =
+            URLSessionConfiguration.default
+
+        configuration
+            .timeoutIntervalForRequest = 30
+
+        configuration
+            .timeoutIntervalForResource = 60
+
+        configuration
+            .waitsForConnectivity = true
+
+        session =
+            URLSession(
+                configuration:
+                    configuration
+            )
     }
 
-    // MARK: - Public API
+    // MARK: - Public Data Loading
 
-    /// Loads the complete SimRa street danger overlay.
-    ///
-    /// The current SimRa Result Viewer uses:
-    /// - /assets/maplibre/street-map.json
-    /// - /api/safety-metrics/region-map
-    ///
-    /// The safety endpoint returns a mapping of street IDs to colors.
-    func loadHazardOverlay() async throws -> [SimRaHazardOverlay] {
+    func loadData() async throws {
 
-        async let streetGrid = loadStreetGrid()
-        async let streetColors = loadRegionColors()
+        _ = try await loadStreets()
 
-        let (grid, colors) = try await (streetGrid, streetColors)
+        _ = try await loadHazardColors()
 
-        guard !grid.isEmpty else {
-            throw SimRaHazardServiceError.noStreetData
+        guard hasStreetData else {
+
+            throw
+                SimRaHazardServiceError
+                    .noStreetData
         }
 
-        var overlays: [SimRaHazardOverlay] = []
-        overlays.reserveCapacity(colors.count)
+        guard hasHazardData else {
 
-        for (streetID, color) in colors {
-            guard let coordinates = grid[streetID],
-                  coordinates.count >= 2 else {
-                continue
-            }
+            throw
+                SimRaHazardServiceError
+                    .noHazardData
+        }
+    }
 
-            let polyline = MKPolyline(
-                coordinates: coordinates,
-                count: coordinates.count
+    // MARK: - Public Overlay Generation
+
+    func overlays(
+        for region:
+            MKCoordinateRegion,
+        maximumCount:
+            Int = 500,
+        paddingFactor:
+            Double = 0.20
+    )
+        -> [SimRaHazardOverlay]
+    {
+
+        let streets:
+            [SimRaStreet]
+
+        let colors:
+            [Int: UIColor]
+
+        lock.lock()
+
+        guard
+            let cachedStreets =
+                streetCache,
+            let cachedColors =
+                colorCache
+        else {
+
+            lock.unlock()
+
+            return []
+        }
+
+        streets =
+            cachedStreets
+
+        colors =
+            cachedColors
+
+        lock.unlock()
+
+        let visibleRect =
+            makeVisibleMapRect(
+                from:
+                    region,
+                paddingFactor:
+                    paddingFactor
             )
 
-            overlays.append(
-                SimRaHazardOverlay(
-                    id: streetID,
-                    polyline: polyline,
-                    color: color
-                )
+        var candidates:
+            [(street:
+                SimRaStreet,
+              color:
+                UIColor)] = []
+
+        candidates.reserveCapacity(
+            min(
+                streets.count,
+                maximumCount * 2
             )
-        }
-
-        guard !overlays.isEmpty else {
-            throw SimRaHazardServiceError.noStreetData
-        }
-
-        return overlays
-    }
-
-    /// Clears in-memory cached SimRa data.
-    func clearCache() {
-        streetGridCache = nil
-        colorCache = nil
-    }
-
-    // MARK: - Street Geometry
-
-    private func loadStreetGrid() async throws -> [Int: [CLLocationCoordinate2D]] {
-
-        if let cached = streetGridCache {
-            return cached
-        }
-
-        let url = baseURL.appendingPathComponent(
-            "assets/maplibre/street-map.json"
         )
-
-        let (data, response) = try await session.data(from: url)
-
-        try validate(response: response)
-
-        let decoder = JSONDecoder()
-
-        guard let root = try? decoder.decode(
-            StreetMapRoot.self,
-            from: data
-        ) else {
-            // The file format has changed between versions of the
-            // dashboard, therefore try a second, permissive parser.
-            let grid = try parseStreetGridPermissively(data)
-            streetGridCache = grid
-            return grid
-        }
-
-        let grid = root.asCoordinateMap()
-
-        guard !grid.isEmpty else {
-            throw SimRaHazardServiceError.invalidStreetMap
-        }
-
-        streetGridCache = grid
-        return grid
-    }
-
-    // MARK: - Safety Colors
-
-    private func loadRegionColors() async throws -> [Int: UIColor] {
-
-        if let cached = colorCache {
-            return cached
-        }
-
-        let url = baseURL.appendingPathComponent(
-            "api/safety-metrics/region-map"
-        )
-
-        let (data, response) = try await session.data(from: url)
-
-        try validate(response: response)
-
-        // The current frontend requests:
-        //
-        //   Map<number, string>
-        //
-        // from /api/safety-metrics/region-map.
-        //
-        // JSON objects arrive in Swift as [String: String].
-        let raw = try JSONSerialization.jsonObject(
-            with: data,
-            options: []
-        )
-
-        guard let dictionary = raw as? [String: Any] else {
-            throw SimRaHazardServiceError.invalidResponse
-        }
-
-        var result: [Int: UIColor] = [:]
-        result.reserveCapacity(dictionary.count)
-
-        for (key, value) in dictionary {
-
-            guard let streetID = Int(key) else {
-                continue
-            }
-
-            guard let colorString = value as? String else {
-                continue
-            }
-
-            guard let color = UIColor(
-                simRaHexOrNamedColor: colorString
-            ) else {
-                continue
-            }
-
-            result[streetID] = color
-        }
-
-        colorCache = result
-        return result
-    }
-
-    // MARK: - Validation
-
-    private func validate(response: URLResponse) throws {
-
-        guard let http = response as? HTTPURLResponse else {
-            throw SimRaHazardServiceError.invalidResponse
-        }
-
-        guard (200...299).contains(http.statusCode) else {
-            throw SimRaHazardServiceError.httpStatus(http.statusCode)
-        }
-    }
-
-    // MARK: - Permissive Street JSON Parsing
-
-    private func parseStreetGridPermissively(
-        _ data: Data
-    ) throws -> [Int: [CLLocationCoordinate2D]] {
-
-        let json = try JSONSerialization.jsonObject(
-            with: data,
-            options: []
-        )
-
-        var result: [Int: [CLLocationCoordinate2D]] = [:]
-
-        if let array = json as? [[String: Any]] {
-            for object in array {
-                parseStreetObject(
-                    object,
-                    into: &result
-                )
-            }
-        }
-
-        if let dictionary = json as? [String: Any] {
-            for (key, value) in dictionary {
-
-                if let object = value as? [String: Any] {
-                    var objectWithID = object
-                    objectWithID["id"] = key
-
-                    parseStreetObject(
-                        objectWithID,
-                        into: &result
-                    )
-                }
-            }
-        }
-
-        guard !result.isEmpty else {
-            throw SimRaHazardServiceError.invalidStreetMap
-        }
-
-        return result
-    }
-
-    private func parseStreetObject(
-        _ object: [String: Any],
-        into result: inout [Int: [CLLocationCoordinate2D]]
-    ) {
-
-        let possibleIDKeys = [
-            "id",
-            "streetId",
-            "streetID",
-            "osmId",
-            "osmID"
-        ]
-
-        var streetID: Int?
-
-        for key in possibleIDKeys {
-            if let value = object[key] {
-
-                if let intValue = value as? Int {
-                    streetID = intValue
-                    break
-                }
-
-                if let number = value as? NSNumber {
-                    streetID = number.intValue
-                    break
-                }
-
-                if let string = value as? String,
-                   let intValue = Int(string) {
-                    streetID = intValue
-                    break
-                }
-            }
-        }
-
-        guard let streetID else {
-            return
-        }
-
-        if let coordinates = extractCoordinates(from: object),
-           coordinates.count >= 2 {
-            result[streetID] = coordinates
-        }
-    }
-
-    private func extractCoordinates(
-        from object: [String: Any]
-    ) -> [CLLocationCoordinate2D]? {
-
-        let possibleGeometryKeys = [
-            "coordinates",
-            "geometry",
-            "line",
-            "points",
-            "path"
-        ]
-
-        for key in possibleGeometryKeys {
-            guard let value = object[key] else {
-                continue
-            }
-
-            if let coordinates = decodeCoordinateArray(value) {
-                return coordinates
-            }
-
-            if let geometry = value as? [String: Any],
-               let geometryCoordinates = geometry["coordinates"],
-               let coordinates = decodeCoordinateArray(geometryCoordinates) {
-                return coordinates
-            }
-        }
-
-        return nil
-    }
-
-    private func decodeCoordinateArray(
-        _ value: Any
-    ) -> [CLLocationCoordinate2D]? {
-
-        // GeoJSON:
-        // [
-        //   [longitude, latitude],
-        //   [longitude, latitude]
-        // ]
-        //
-        if let array = value as? [[Any]] {
-
-            var coordinates: [CLLocationCoordinate2D] = []
-            coordinates.reserveCapacity(array.count)
-
-            for item in array {
-
-                guard item.count >= 2 else {
-                    continue
-                }
-
-                let longitude = number(from: item[0])
-                let latitude = number(from: item[1])
-
-                guard let longitude,
-                      let latitude else {
-                    continue
-                }
-
-                coordinates.append(
-                    CLLocationCoordinate2D(
-                        latitude: latitude,
-                        longitude: longitude
-                    )
-                )
-            }
-
-            return coordinates.isEmpty ? nil : coordinates
-        }
-
-        // Alternate format:
-        // [
-        //   {"lat": ..., "lon": ...},
-        //   ...
-        // ]
-        //
-        if let array = value as? [[String: Any]] {
-
-            var coordinates: [CLLocationCoordinate2D] = []
-            coordinates.reserveCapacity(array.count)
-
-            for item in array {
-
-                let latitude =
-                    number(from: item["lat"])
-                    ?? number(from: item["latitude"])
-
-                let longitude =
-                    number(from: item["lon"])
-                    ?? number(from: item["lng"])
-                    ?? number(from: item["longitude"])
-
-                guard let latitude,
-                      let longitude else {
-                    continue
-                }
-
-                coordinates.append(
-                    CLLocationCoordinate2D(
-                        latitude: latitude,
-                        longitude: longitude
-                    )
-                )
-            }
-
-            return coordinates.isEmpty ? nil : coordinates
-        }
-
-        return nil
-    }
-
-    private func number(from value: Any?) -> Double? {
-
-        if let value = value as? Double {
-            return value
-        }
-
-        if let value = value as? Float {
-            return Double(value)
-        }
-
-        if let value = value as? Int {
-            return Double(value)
-        }
-
-        if let value = value as? NSNumber {
-            return value.doubleValue
-        }
-
-        if let value = value as? String {
-            return Double(value)
-        }
-
-        return nil
-    }
-}
-
-// MARK: - Current SimRa Street Map DTOs
-
-private struct StreetMapRoot: Decodable {
-
-    let streets: [StreetMapEntry]?
-
-    enum CodingKeys: String, CodingKey {
-        case streets
-    }
-
-    func asCoordinateMap() -> [Int: [CLLocationCoordinate2D]] {
-
-        guard let streets else {
-            return [:]
-        }
-
-        var result: [Int: [CLLocationCoordinate2D]] = [:]
-        result.reserveCapacity(streets.count)
 
         for street in streets {
-            let coordinates = street.coordinates.map {
-                CLLocationCoordinate2D(
-                    latitude: $0[1],
-                    longitude: $0[0]
-                )
-            }
 
-            guard coordinates.count >= 2 else {
+            guard
+                street.boundingBox
+                    .intersects(
+                        visibleRect
+                    ),
+                let color =
+                    colors[
+                        street.id
+                    ]
+            else {
                 continue
             }
 
-            result[street.id] = coordinates
+            candidates.append(
+                (
+                    street:
+                        street,
+                    color:
+                        color
+                )
+            )
         }
 
-        return result
-    }
-}
+        // Protect MapKit from extremely dense views.
+        if
+            candidates.count
+                > maximumCount
+        {
 
-private struct StreetMapEntry: Decodable {
+            candidates =
+                Array(
+                    candidates.prefix(
+                        maximumCount
+                    )
+                )
+        }
 
-    let id: Int
-    let coordinates: [[Double]]
+        return candidates.compactMap {
 
-    enum CodingKeys: String, CodingKey {
-        case id
-        case coordinates
-    }
-}
-
-// MARK: - UIColor helper
-
-private extension UIColor {
-
-    convenience init?(simRaHexOrNamedColor string: String) {
-
-        let value = string
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .lowercased()
-
-        switch value {
-        case "red":
-            self.init(.systemRed)
-
-        case "orange":
-            self.init(.systemOrange)
-
-        case "yellow":
-            self.init(.systemYellow)
-
-        case "green":
-            self.init(.systemGreen)
-
-        case "blue":
-            self.init(.systemBlue)
-
-        case "gray", "grey":
-            self.init(.systemGray)
-
-        default:
-
-            let hex = value
-                .replacingOccurrences(of: "#", with: "")
-                .replacingOccurrences(of: "0x", with: "")
+            candidate
+                in
 
             guard
-                hex.count == 6 || hex.count == 8,
-                let integer = UInt64(hex, radix: 16)
+                candidate
+                    .street
+                    .coordinates
+                    .count >= 2
             else {
                 return nil
             }
 
-            let red: UInt64
-            let green: UInt64
-            let blue: UInt64
-            let alpha: UInt64
+            let polyline =
+                MKPolyline(
+                    coordinates:
+                        candidate
+                            .street
+                            .coordinates,
+                    count:
+                        candidate
+                            .street
+                            .coordinates
+                            .count
+                )
+
+            return
+                SimRaHazardOverlay(
+                    id:
+                        candidate
+                            .street
+                            .id,
+                    polyline:
+                        polyline,
+                    color:
+                        candidate
+                            .color
+                )
+        }
+    }
+
+    // MARK: - Cache
+
+    func clearCache() {
+
+        lock.lock()
+
+        streetCache = nil
+        colorCache = nil
+
+        lock.unlock()
+    }
+
+    private var hasStreetData: Bool {
+
+        lock.lock()
+
+        defer {
+            lock.unlock()
+        }
+
+        return
+            !(streetCache?.isEmpty ?? true)
+    }
+
+    private var hasHazardData: Bool {
+
+        lock.lock()
+
+        defer {
+            lock.unlock()
+        }
+
+        return
+            !(colorCache?.isEmpty ?? true)
+    }
+
+    // MARK: - Streets
+
+    private func loadStreets()
+        async throws
+        -> [SimRaStreet]
+    {
+
+        lock.lock()
+
+        if
+            let cached =
+                streetCache
+        {
+
+            lock.unlock()
+
+            return cached
+        }
+
+        lock.unlock()
+
+        let url =
+            baseURL
+                .appendingPathComponent(
+                    "assets/maplibre/street-map.json"
+                )
+
+        let (
+            data,
+            response
+        ) =
+            try await
+                session.data(
+                    from:
+                        url
+                )
+
+        try validate(
+            response:
+                response
+        )
+
+        let entries:
+            [StreetGridEntry]
+
+        do {
+
+            entries =
+                try JSONDecoder()
+                    .decode(
+                        [
+                            StreetGridEntry
+                        ].self,
+                        from:
+                            data
+                    )
+
+        } catch {
+
+            print(
+                "SimRa street-map decode error:",
+                error
+            )
+
+            throw
+                SimRaHazardServiceError
+                    .invalidStreetMap
+        }
+
+        var result:
+            [SimRaStreet] = []
+
+        result.reserveCapacity(
+            entries.count
+        )
+
+        for entry in entries {
+
+            guard
+                let coordinates =
+                    decodeWay(
+                        entry.way
+                    ),
+                coordinates.count >= 2,
+                let boundingBox =
+                    makeBoundingBox(
+                        coordinates
+                    )
+            else {
+                continue
+            }
+
+            result.append(
+                SimRaStreet(
+                    id:
+                        entry.osmId,
+                    coordinates:
+                        coordinates,
+                    boundingBox:
+                        boundingBox
+                )
+            )
+        }
+
+        guard !result.isEmpty else {
+
+            throw
+                SimRaHazardServiceError
+                    .invalidStreetMap
+        }
+
+        lock.lock()
+
+        streetCache =
+            result
+
+        lock.unlock()
+
+        print(
+            "SimRa: loaded \(result.count) street geometries."
+        )
+
+        return result
+    }
+
+    // MARK: - Hazard Colors
+
+    private func loadHazardColors()
+        async throws
+        -> [Int: UIColor]
+    {
+
+        lock.lock()
+
+        if
+            let cached =
+                colorCache
+        {
+
+            lock.unlock()
+
+            return cached
+        }
+
+        lock.unlock()
+
+        let url =
+            baseURL
+                .appendingPathComponent(
+                    "api/safety-metrics/region-map"
+                )
+
+        let (
+            data,
+            response
+        ) =
+            try await
+                session.data(
+                    from:
+                        url
+                )
+
+        try validate(
+            response:
+                response
+        )
+
+        let object =
+            try JSONSerialization
+                .jsonObject(
+                    with:
+                        data,
+                    options:
+                        []
+                )
+
+        guard
+            let dictionary =
+                object
+                    as? [String: Any]
+        else {
+
+            print(
+                "SimRa: region-map response was not a JSON object."
+            )
+
+            throw
+                SimRaHazardServiceError
+                    .invalidResponse
+        }
+
+        var result:
+            [Int: UIColor] = [:]
+
+        result.reserveCapacity(
+            dictionary.count
+        )
+
+        for (
+            key,
+            value
+        ) in dictionary {
+
+            guard
+                let streetID =
+                    Int(key)
+            else {
+                continue
+            }
+
+            guard
+                let colorString =
+                    value as? String
+            else {
+                continue
+            }
+
+            guard
+                let color =
+                    UIColor(
+                        simRaColor:
+                            colorString
+                    )
+            else {
+                continue
+            }
+
+            result[
+                streetID
+            ] =
+                color
+        }
+
+        guard !result.isEmpty else {
+
+            throw
+                SimRaHazardServiceError
+                    .noHazardData
+        }
+
+        lock.lock()
+
+        colorCache =
+            result
+
+        lock.unlock()
+
+        print(
+            "SimRa: loaded \(result.count) hazard colors."
+        )
+
+        return result
+    }
+
+    // MARK: - Geometry Decoder
+
+    private func decodeWay(
+        _ way:
+            String
+    )
+        -> [CLLocationCoordinate2D]?
+    {
+
+        guard
+            let data =
+                way.data(
+                    using:
+                        .utf8
+                )
+        else {
+            return nil
+        }
+
+        // Primary/current format:
+        // serialized GeoJSON LineString.
+        if
+            let geometry =
+                try? JSONDecoder()
+                    .decode(
+                        GeoJSONLineString
+                            .self,
+                        from:
+                            data
+                    )
+        {
+
+            guard
+                geometry.type
+                    .lowercased()
+                    ==
+                    "linestring"
+            else {
+                return nil
+            }
+
+            return
+                sanitize(
+                    geometry.coordinates
+                )
+        }
+
+        // Compatibility with historical WKT data.
+        return
+            decodeWKT(
+                way
+            )
+    }
+
+    private func sanitize(
+        _ raw:
+            [[Double]]
+    )
+        -> [CLLocationCoordinate2D]
+    {
+
+        var result:
+            [CLLocationCoordinate2D] = []
+
+        result.reserveCapacity(
+            raw.count
+        )
+
+        for position in raw {
+
+            guard
+                position.count >= 2
+            else {
+                continue
+            }
+
+            let longitude =
+                position[0]
+
+            let latitude =
+                position[1]
+
+            guard
+                longitude.isFinite,
+                latitude.isFinite,
+                longitude >= -180,
+                longitude <= 180,
+                latitude >= -90,
+                latitude <= 90
+            else {
+                continue
+            }
+
+            let coordinate =
+                CLLocationCoordinate2D(
+                    latitude:
+                        latitude,
+                    longitude:
+                        longitude
+                )
+
+            if
+                let previous =
+                    result.last,
+                previous.latitude
+                    ==
+                    coordinate.latitude,
+                previous.longitude
+                    ==
+                    coordinate.longitude
+            {
+                continue
+            }
+
+            result.append(
+                coordinate
+            )
+        }
+
+        return
+            result.count >= 2
+            ? result
+            : []
+    }
+
+    // MARK: - WKT Compatibility
+
+    private func decodeWKT(
+        _ string:
+            String
+    )
+        -> [CLLocationCoordinate2D]?
+    {
+
+        let value =
+            string
+                .trimmingCharacters(
+                    in:
+                        .whitespacesAndNewlines
+                )
+
+        guard
+            value
+                .uppercased()
+                .hasPrefix(
+                    "LINESTRING"
+                )
+        else {
+            return nil
+        }
+
+        guard
+            let opening =
+                value.firstIndex(
+                    of:
+                        "("
+                ),
+            let closing =
+                value.lastIndex(
+                    of:
+                        ")"
+                )
+        else {
+            return nil
+        }
+
+        let body =
+            value[
+                value.index(
+                    after:
+                        opening
+                )..<closing
+            ]
+
+        var result:
+            [CLLocationCoordinate2D] = []
+
+        for item in
+            body.split(
+                separator:
+                    ","
+            )
+        {
+
+            let parts =
+                item.split {
+                    $0 == " "
+                    || $0 == "\t"
+                    || $0 == "\n"
+                    || $0 == "\r"
+                }
+
+            guard
+                parts.count >= 2,
+                let longitude =
+                    Double(
+                        parts[0]
+                    ),
+                let latitude =
+                    Double(
+                        parts[1]
+                    ),
+                longitude.isFinite,
+                latitude.isFinite,
+                longitude >= -180,
+                longitude <= 180,
+                latitude >= -90,
+                latitude <= 90
+            else {
+                continue
+            }
+
+            result.append(
+                CLLocationCoordinate2D(
+                    latitude:
+                        latitude,
+                    longitude:
+                        longitude
+                )
+            )
+        }
+
+        return
+            result.count >= 2
+            ? result
+            : nil
+    }
+
+    // MARK: - Bounding Box
+
+    private func makeBoundingBox(
+        _ coordinates:
+            [CLLocationCoordinate2D]
+    )
+        -> MKMapRect?
+    {
+
+        guard
+            coordinates.count >= 2
+        else {
+            return nil
+        }
+
+        var rect =
+            MKMapRect.null
+
+        for coordinate in coordinates {
+
+            let point =
+                MKMapPoint(
+                    coordinate
+                )
+
+            let pointRect =
+                MKMapRect(
+                    origin:
+                        point,
+                    size:
+                        MKMapSize(
+                            width:
+                                0,
+                            height:
+                                0
+                        )
+                )
+
+            rect =
+                rect.union(
+                    pointRect
+                )
+        }
+
+        guard
+            !rect.isNull,
+            rect.width.isFinite,
+            rect.height.isFinite
+        else {
+            return nil
+        }
+
+        return rect
+    }
+
+    // MARK: - Viewport
+
+    private func makeVisibleMapRect(
+        from region:
+            MKCoordinateRegion,
+        paddingFactor:
+            Double
+    )
+        -> MKMapRect
+    {
+
+        let latitudeDelta =
+            max(
+                region.span.latitudeDelta,
+                0.000001
+            )
+
+        let longitudeDelta =
+            max(
+                region.span.longitudeDelta,
+                0.000001
+            )
+
+        let paddedLatitudeDelta =
+            latitudeDelta
+            * (1 + paddingFactor)
+
+        let paddedLongitudeDelta =
+            longitudeDelta
+            * (1 + paddingFactor)
+
+        let topLeft =
+            MKMapPoint(
+                CLLocationCoordinate2D(
+                    latitude:
+                        region.center.latitude
+                        + paddedLatitudeDelta / 2,
+                    longitude:
+                        region.center.longitude
+                        - paddedLongitudeDelta / 2
+                )
+            )
+
+        let bottomRight =
+            MKMapPoint(
+                CLLocationCoordinate2D(
+                    latitude:
+                        region.center.latitude
+                        - paddedLatitudeDelta / 2,
+                    longitude:
+                        region.center.longitude
+                        + paddedLongitudeDelta / 2
+                )
+            )
+
+        let minX =
+            min(
+                topLeft.x,
+                bottomRight.x
+            )
+
+        let minY =
+            min(
+                topLeft.y,
+                bottomRight.y
+            )
+
+        let width =
+            abs(
+                bottomRight.x
+                -
+                topLeft.x
+            )
+
+        let height =
+            abs(
+                bottomRight.y
+                -
+                topLeft.y
+            )
+
+        return
+            MKMapRect(
+                x:
+                    minX,
+                y:
+                    minY,
+                width:
+                    width,
+                height:
+                    height
+            )
+    }
+
+    // MARK: - HTTP
+
+    private func validate(
+        response:
+            URLResponse
+    ) throws {
+
+        guard
+            let http =
+                response as?
+                HTTPURLResponse
+        else {
+            throw
+                SimRaHazardServiceError
+                    .invalidResponse
+        }
+
+        guard
+            (200...299)
+                .contains(
+                    http.statusCode
+                )
+        else {
+            throw
+                SimRaHazardServiceError
+                    .httpStatus(
+                        http.statusCode
+                    )
+        }
+    }
+}
+
+// MARK: - DTOs
+
+private struct StreetGridEntry:
+    Decodable
+{
+
+    let highway:
+        String
+
+    let osmId:
+        Int
+
+    let way:
+        String
+
+    enum CodingKeys:
+        String,
+        CodingKey
+    {
+        case highway
+        case osmId = "osm_id"
+        case way
+    }
+}
+
+private struct GeoJSONLineString:
+    Decodable
+{
+
+    let type:
+        String
+
+    let coordinates:
+        [[Double]]
+}
+
+// MARK: - Color Parsing
+
+private extension UIColor {
+
+    convenience init?(
+        simRaColor:
+            String
+    ) {
+
+        let value =
+            simRaColor
+                .trimmingCharacters(
+                    in:
+                        .whitespacesAndNewlines
+                )
+                .lowercased()
+
+        switch value {
+
+        case "red":
+
+            self.init(
+                red:
+                    1,
+                green:
+                    0,
+                blue:
+                    0,
+                alpha:
+                    1
+            )
+
+        case "orange":
+
+            self.init(
+                red:
+                    1,
+                green:
+                    0.55,
+                blue:
+                    0,
+                alpha:
+                    1
+            )
+
+        case "yellow":
+
+            self.init(
+                red:
+                    1,
+                green:
+                    0.80,
+                blue:
+                    0,
+                alpha:
+                    1
+            )
+
+        case "green":
+
+            self.init(
+                red:
+                    0.20,
+                green:
+                    0.75,
+                blue:
+                    0.35,
+                alpha:
+                    1
+            )
+
+        case "blue":
+
+            self.init(
+                red:
+                    0.20,
+                green:
+                    0.45,
+                blue:
+                    1,
+                alpha:
+                    1
+            )
+
+        case "gray", "grey":
+
+            self.init(
+                red:
+                    0.50,
+                green:
+                    0.50,
+                blue:
+                    0.50,
+                alpha:
+                    1
+            )
+
+        default:
+
+            let hex =
+                value
+                    .replacingOccurrences(
+                        of:
+                            "#",
+                        with:
+                            ""
+                    )
+                    .replacingOccurrences(
+                        of:
+                            "0x",
+                        with:
+                            ""
+                    )
+
+            guard
+                hex.count == 6
+                    ||
+                hex.count == 8,
+                let integer =
+                    UInt64(
+                        hex,
+                        radix:
+                            16
+                    )
+            else {
+                return nil
+            }
+
+            let red:
+                UInt64
+
+            let green:
+                UInt64
+
+            let blue:
+                UInt64
+
+            let alpha:
+                UInt64
 
             if hex.count == 8 {
-                red = (integer >> 24) & 0xFF
-                green = (integer >> 16) & 0xFF
-                blue = (integer >> 8) & 0xFF
-                alpha = integer & 0xFF
+
+                red =
+                    (integer >> 24)
+                    & 0xFF
+
+                green =
+                    (integer >> 16)
+                    & 0xFF
+
+                blue =
+                    (integer >> 8)
+                    & 0xFF
+
+                alpha =
+                    integer
+                    & 0xFF
+
             } else {
-                red = (integer >> 16) & 0xFF
-                green = (integer >> 8) & 0xFF
-                blue = integer & 0xFF
-                alpha = 0xFF
+
+                red =
+                    (integer >> 16)
+                    & 0xFF
+
+                green =
+                    (integer >> 8)
+                    & 0xFF
+
+                blue =
+                    integer
+                    & 0xFF
+
+                alpha =
+                    0xFF
             }
 
             self.init(
-                red: CGFloat(red) / 255.0,
-                green: CGFloat(green) / 255.0,
-                blue: CGFloat(blue) / 255.0,
-                alpha: CGFloat(alpha) / 255.0
+                red:
+                    CGFloat(red) / 255,
+                green:
+                    CGFloat(green) / 255,
+                blue:
+                    CGFloat(blue) / 255,
+                alpha:
+                    CGFloat(alpha) / 255
             )
         }
     }

@@ -38,7 +38,33 @@ public class Trip: UploaderObject, CLLocationManagerDelegate {
     private var largestZMotion: TripLocation?
     private var secondLargestZMotion: TripLocation?
     private var timer: Timer?
-    private var recordingStartDate: Date?
+    public private(set) var recordingStartDate: Date?
+    private var accumulatedLength: Double = 0
+
+    private lazy var motionQueue: OperationQueue = {
+        let queue = OperationQueue()
+        queue.name = "de.tu-berlin.mcc.simra.motionQueue"
+        queue.maxConcurrentOperationCount = 1
+        queue.qualityOfService = .utility
+        return queue
+    }()
+
+    private final class AccelerometerBuffer {
+        var xa = [Double](repeating: 0.0, count: 30)
+        var ya = [Double](repeating: 0.0, count: 30)
+        var za = [Double](repeating: 0.0, count: 30)
+        var xla = [Double](repeating: 0.0, count: 30)
+        var yla = [Double](repeating: 0.0, count: 30)
+        var zla = [Double](repeating: 0.0, count: 30)
+        var xra = [Double](repeating: 0.0, count: 30)
+        var yra = [Double](repeating: 0.0, count: 30)
+        var zra = [Double](repeating: 0.0, count: 30)
+        var cra = [Double](repeating: 0.0, count: 30)
+        var aIndex = 0
+        var aFill = 0
+    }
+
+    private var accelerometerBuffer: AccelerometerBuffer?
 
     public override init() {
         let defaults = UserDefaults.standard
@@ -70,7 +96,7 @@ public class Trip: UploaderObject, CLLocationManagerDelegate {
             return dict
         }
 
-        guard let documentDirectory = documentsDirectoryURL() else { return nil }
+        let documentDirectory = Self.documentsDirectoryURL()
         let tripURL = documentDirectory.appendingPathComponent("Trip-\(identifier).json")
         guard let jsonData = try? Data(contentsOf: tripURL),
               let dict = try? JSONSerialization.jsonObject(with: jsonData, options: []) as? [String: Any] else {
@@ -117,7 +143,7 @@ public class Trip: UploaderObject, CLLocationManagerDelegate {
             }
         }
 
-        if tripAnnotations == 0, let location = tripLocations.firstObject as? TripLocation {
+        if tripAnnotations() == 0, let location = tripLocations.firstObject as? TripLocation {
             let annotation = TripAnnotation()
             annotation.incidentId = -5
             location.tripAnnotation = annotation
@@ -199,11 +225,11 @@ public class Trip: UploaderObject, CLLocationManagerDelegate {
         }
 
         let documentDirectoryURL = Self.documentsDirectoryURL()
-        let locationsURL = documentDirectoryURL?.appendingPathComponent("TripLocations-\(identifier).csv")
-        let motionsURL = documentDirectoryURL?.appendingPathComponent("TripMotions-\(identifier).csv")
+        let locationsURL = documentDirectoryURL.appendingPathComponent("TripLocations-\(identifier).csv")
+        let motionsURL = documentDirectoryURL.appendingPathComponent("TripMotions-\(identifier).csv")
 
-        let locationsHandle = locationsURL.flatMap { FileHandle(forReadingAtPath: $0.path) }
-        let motionsHandle = motionsURL.flatMap { FileHandle(forReadingAtPath: $0.path) }
+        let locationsHandle = FileHandle(forReadingAtPath: locationsURL.path)
+        let motionsHandle = FileHandle(forReadingAtPath: motionsURL.path)
 
         if let locationsHandle, let motionsHandle {
             var locationsString = Self.readline(locationsHandle)
@@ -213,20 +239,20 @@ public class Trip: UploaderObject, CLLocationManagerDelegate {
                 if let locationLine = locationsString, let motionLine = motionsString {
                     let locationArray = locationLine.components(separatedBy: ",")
                     let motionArray = motionLine.components(separatedBy: ",")
-                    let locationTime = Double(locationArray[safe: 5] ?? "0") ?? 0
-                    let motionTime = Double(motionArray[safe: 5] ?? "0") ?? 0
+                    let locationTime = Double(locationArray[5] ?? "0") ?? 0
+                    let motionTime = Double(motionArray[5] ?? "0") ?? 0
                     if locationTime <= motionTime {
-                        if let data = locationLine.data(using: .utf8) { fh.write(data) }
+                        if let data = locationLine.data(using: String.Encoding.utf8) { fh.write(data) }
                         locationsString = Self.readline(locationsHandle)
                     } else {
-                        if let data = motionLine.data(using: .utf8) { fh.write(data) }
+                        if let data = motionLine.data(using: String.Encoding.utf8) { fh.write(data) }
                         motionsString = Self.readline(motionsHandle)
                     }
                 } else if let locationLine = locationsString {
-                    if let data = locationLine.data(using: .utf8) { fh.write(data) }
+                    if let data = locationLine.data(using: String.Encoding.utf8) { fh.write(data) }
                     locationsString = Self.readline(locationsHandle)
                 } else if let motionLine = motionsString {
-                    if let data = motionLine.data(using: .utf8) { fh.write(data) }
+                    if let data = motionLine.data(using: String.Encoding.utf8) { fh.write(data) }
                     motionsString = Self.readline(motionsHandle)
                 }
             }
@@ -247,9 +273,9 @@ public class Trip: UploaderObject, CLLocationManagerDelegate {
                     let motionTime = NSNumber(value: tripMotion.timestamp * 1000.0)
 
                     while !locationLines.isEmpty {
-                        guard let firstTime = locationLines.keys.sorted().first else { break }
+                        guard let firstTime = locationLines.keys.sorted(by: { $0.compare($1) == .orderedAscending }).first else { break }
                         if firstTime.doubleValue < motionTime.doubleValue {
-                            if let data = (locationLines[firstTime] ?? "").data(using: .utf8) {
+                            if let data = (locationLines[firstTime] ?? "").data(using: String.Encoding.utf8) {
                                 fh.write(data)
                             }
                             locationLines.removeValue(forKey: firstTime)
@@ -258,7 +284,7 @@ public class Trip: UploaderObject, CLLocationManagerDelegate {
                         }
                     }
 
-                    if let data = csvLine.data(using: .utf8) {
+                    if let data = csvLine.data(using: String.Encoding.utf8) {
                         fh.write(data)
                     }
                 }
@@ -270,16 +296,27 @@ public class Trip: UploaderObject, CLLocationManagerDelegate {
     }
 
     public override func save() {
-        guard let appDelegate else { return }
-        appDelegate.trips.updateTrip(self)
+        if let appDelegate = self.appDelegate ?? (UIApplication.shared.delegate as? AppDelegate) {
+            appDelegate.trips.updateTrip(self)
+        }
 
-        let fileManager = FileManager.default
         let documentDirectoryURL = Self.documentsDirectoryURL()
         let tripURL = documentDirectoryURL.appendingPathComponent("Trip-\(identifier).json")
         let tripInfoURL = documentDirectoryURL.appendingPathComponent("TripInfo-\(identifier).json")
 
-        let tripSuccess = (asJSONData() as NSData?)?.write(to: tripURL, options: .atomic, error: nil) ?? false
-        let tripInfoSuccess = (tripInfo().asJSONData() as NSData?)?.write(to: tripInfoURL, options: .atomic, error: nil) ?? false
+        let tripSuccess: Bool
+        if let tripData = asJSONData() {
+            tripSuccess = (try? tripData.write(to: tripURL, options: .atomic)) != nil
+        } else {
+            tripSuccess = false
+        }
+
+        let tripInfoSuccess: Bool
+        if let tripInfoData = tripInfo().asJSONData() {
+            tripInfoSuccess = (try? tripInfoData.write(to: tripInfoURL, options: .atomic)) != nil
+        } else {
+            tripInfoSuccess = false
+        }
 
         print("[Trip] save tripSuccess=\(tripSuccess) tripInfoSuccess=\(tripInfoSuccess)")
 
@@ -302,9 +339,46 @@ public class Trip: UploaderObject, CLLocationManagerDelegate {
         info.length = length()
         info.statisticsAdded = statisticsAdded
         info.reUploaded = reUploaded
-        info.annotationsCount = tripAnnotations
-        info.validAnnotationsCount = tripValidAnnotations
+        info.annotationsCount = tripAnnotations()
+        info.validAnnotationsCount = tripValidAnnotations()
         return info
+    }
+
+    public func asDictionary() -> [String: Any] {
+        var tripDict: [String: Any] = [
+            "identifier": identifier,
+            "version": version,
+            "edited": edited,
+            "uploaded": uploaded,
+            "deferredSecs": deferredSecs,
+            "deferredMeters": deferredMeters,
+            "bikeTypeId": bikeTypeId,
+            "positionId": positionId,
+            "AIVersion": AIVersion,
+            "childseat": childseat,
+            "trailer": trailer,
+            "statisticsAdded": statisticsAdded,
+            "reUploaded": reUploaded
+        ]
+
+        if let fileHash {
+            tripDict["fileHash"] = fileHash
+        }
+        if let filePasswd {
+            tripDict["filePasswd"] = filePasswd
+        }
+
+        let tripLocationsArray = NSMutableArray()
+        for case let tripLocation as TripLocation in tripLocations {
+            tripLocationsArray.add(convertTripLocationToDictionary(tripLocation))
+        }
+        tripDict["tripLocations"] = tripLocationsArray
+
+        return tripDict
+    }
+
+    public func asJSONData() -> Data? {
+        try? JSONSerialization.data(withJSONObject: asDictionary(), options: [])
     }
 
     public override func uploadFile(_ name: String, withController controller: NSObject, error errorSelector: Selector, completion completionSelector: Selector) {
@@ -317,7 +391,7 @@ public class Trip: UploaderObject, CLLocationManagerDelegate {
             }
         }
 
-        if tripAnnotations == 0, let location = tripLocations.firstObject as? TripLocation {
+        if tripAnnotations() == 0, let location = tripLocations.firstObject as? TripLocation {
             let annotation = TripAnnotation()
             annotation.incidentId = -5
             location.tripAnnotation = annotation
@@ -328,8 +402,9 @@ public class Trip: UploaderObject, CLLocationManagerDelegate {
             save()
         }
 
+        let currentAppDelegate = appDelegate ?? (UIApplication.shared.delegate as? AppDelegate)
         if !statisticsAdded {
-            appDelegate?.trips.addTripToStatistics(self)
+            currentAppDelegate?.trips.addTripToStatistics(self)
             statisticsAdded = true
             save()
         }
@@ -378,6 +453,9 @@ public class Trip: UploaderObject, CLLocationManagerDelegate {
     }
 
     public func length() -> Int {
+        if accumulatedLength > 0 {
+            return Int(accumulatedLength)
+        }
         var total: CLLocationDistance = 0
         var lastTripLocation: TripLocation?
         for case let tripLocation as TripLocation in tripLocations {
@@ -386,6 +464,7 @@ public class Trip: UploaderObject, CLLocationManagerDelegate {
             }
             lastTripLocation = tripLocation
         }
+        accumulatedLength = total
         return Int(total)
     }
 
@@ -474,7 +553,6 @@ public class Trip: UploaderObject, CLLocationManagerDelegate {
         positionId = appDelegate.defaults.integer(forKey: "positionId")
         childseat = appDelegate.defaults.bool(forKey: "childSeat")
         trailer = appDelegate.defaults.bool(forKey: "trailer")
-        saveRecordingCheckpoint()
 
         let fileManager = FileManager.default
         let documentDirectoryURL = Self.documentsDirectoryURL()
@@ -486,14 +564,14 @@ public class Trip: UploaderObject, CLLocationManagerDelegate {
         locationsFile = FileHandle(forWritingAtPath: locationsURL.path)
         motionsFile = FileHandle(forWritingAtPath: motionsURL.path)
         recordingStartDate = Date()
+        saveRecordingCheckpoint()
 
         if appDelegate.mm.isGyroAvailable {
             appDelegate.mm.startGyroUpdates()
         }
 
         appDelegate.lm.delegate = self
-
-        let status = CLLocationManager.authorizationStatus()
+        let status = CLLocationManager().authorizationStatus
         if status == .notDetermined {
             appDelegate.lm.requestWhenInUseAuthorization()
         } else if status == .authorizedAlways || status == .authorizedWhenInUse {
@@ -501,107 +579,90 @@ public class Trip: UploaderObject, CLLocationManagerDelegate {
             appDelegate.lm.desiredAccuracy = kCLLocationAccuracyNearestTenMeters
             appDelegate.lm.activityType = .fitness
             appDelegate.lm.startUpdatingLocation()
+        } else {
+            print("[Trip] Location authorization not granted: \(status.rawValue)")
         }
 
-        if appDelegate.mm.isAccelerometerAvailable {
+        if appDelegate.mm.isDeviceMotionAvailable {
             let accelerometerSamples = 30
             let accelerometerSteps = 5
-            var xa = Array(repeating: 0.0, count: accelerometerSamples)
-            var ya = Array(repeating: 0.0, count: accelerometerSamples)
-            var za = Array(repeating: 0.0, count: accelerometerSamples)
-            var xla = Array(repeating: 0.0, count: accelerometerSamples)
-            var yla = Array(repeating: 0.0, count: accelerometerSamples)
-            var zla = Array(repeating: 0.0, count: accelerometerSamples)
-            var xra = Array(repeating: 0.0, count: accelerometerSamples)
-            var yra = Array(repeating: 0.0, count: accelerometerSamples)
-            var zra = Array(repeating: 0.0, count: accelerometerSamples)
-            var cra = Array(repeating: 0.0, count: accelerometerSamples)
-            var aIndex = 0
-            var aFill = 0
+            let buffer = AccelerometerBuffer()
+            self.accelerometerBuffer = buffer
+
+            appDelegate.mm.deviceMotionUpdateInterval = 1.0 / 50.0
+            appDelegate.mm.startDeviceMotionUpdates(to: motionQueue) { [weak self, weak appDelegate] deviceMotion, _ in
+                guard let self, let appDelegate, let buffer = self.accelerometerBuffer, let deviceMotion else { return }
+                let accel = appDelegate.mm.accelerometerData?.acceleration
+
+                buffer.xa[buffer.aIndex] = accel?.x ?? (deviceMotion.userAcceleration.x + deviceMotion.gravity.x)
+                buffer.ya[buffer.aIndex] = accel?.y ?? (deviceMotion.userAcceleration.y + deviceMotion.gravity.y)
+                buffer.za[buffer.aIndex] = accel?.z ?? (deviceMotion.userAcceleration.z + deviceMotion.gravity.z)
+                buffer.xla[buffer.aIndex] = deviceMotion.userAcceleration.x
+                buffer.yla[buffer.aIndex] = deviceMotion.userAcceleration.y
+                buffer.zla[buffer.aIndex] = deviceMotion.userAcceleration.z
+                buffer.xra[buffer.aIndex] = deviceMotion.attitude.quaternion.x
+                buffer.yra[buffer.aIndex] = deviceMotion.attitude.quaternion.y
+                buffer.zra[buffer.aIndex] = deviceMotion.attitude.quaternion.z
+                buffer.cra[buffer.aIndex] = deviceMotion.attitude.quaternion.w
+
+                buffer.aIndex = (buffer.aIndex + 1) % accelerometerSamples
+                buffer.aFill += 1
+
+                if buffer.aFill >= accelerometerSamples {
+                    var x = 0.0, y = 0.0, z = 0.0
+                    var xl = 0.0, yl = 0.0, zl = 0.0
+                    var xr = 0.0, yr = 0.0, zr = 0.0, cr = 0.0
+                    for i in 0..<accelerometerSamples {
+                        x += buffer.xa[i]; y += buffer.ya[i]; z += buffer.za[i]
+                        xl += buffer.xla[i]; yl += buffer.yla[i]; zl += buffer.zla[i]
+                        xr += buffer.xra[i]; yr += buffer.yra[i]; zr += buffer.zra[i]
+                        cr += buffer.cra[i]
+                    }
+                    let count = Double(accelerometerSamples)
+                    x /= count; y /= count; z /= count
+                    xl /= count; yl /= count; zl /= count
+                    xr /= count; yr /= count; zr /= count; cr /= count
+
+                    self.addAcceleration(x: x, y: y, z: z, xl: xl, yl: yl, zl: zl, xr: xr, yr: yr, zr: zr, cr: cr)
+                    buffer.aFill = accelerometerSamples - accelerometerSteps
+                }
+            }
+        } else if appDelegate.mm.isAccelerometerAvailable {
+            let accelerometerSamples = 30
+            let accelerometerSteps = 5
+            let buffer = AccelerometerBuffer()
+            self.accelerometerBuffer = buffer
 
             appDelegate.mm.accelerometerUpdateInterval = 1.0 / 50.0
-            appDelegate.mm.startAccelerometerUpdates()
-            if appDelegate.mm.isDeviceMotionAvailable {
-                appDelegate.mm.deviceMotionUpdateInterval = 1.0 / 50.0
-                appDelegate.mm.startDeviceMotionUpdates()
-            }
+            appDelegate.mm.startAccelerometerUpdates(to: motionQueue) { [weak self] accelerometerData, _ in
+                guard let self, let buffer = self.accelerometerBuffer, let accelerometerData else { return }
+                buffer.xa[buffer.aIndex] = accelerometerData.acceleration.x
+                buffer.ya[buffer.aIndex] = accelerometerData.acceleration.y
+                buffer.za[buffer.aIndex] = accelerometerData.acceleration.z
 
-            timer = Timer.scheduledTimer(withTimeInterval: 1.0 / 50.0, repeats: true) { [weak self, weak appDelegate] _ in
-                guard let self, let appDelegate else { return }
-                let accelerometerData = appDelegate.mm.accelerometerData
-                let deviceMotion = appDelegate.mm.deviceMotion
+                buffer.aIndex = (buffer.aIndex + 1) % accelerometerSamples
+                buffer.aFill += 1
 
-                if let accelerometerData {
-                    xa[aIndex] = accelerometerData.acceleration.x
-                    ya[aIndex] = accelerometerData.acceleration.y
-                    za[aIndex] = accelerometerData.acceleration.z
-                    if let deviceMotion {
-                        xla[aIndex] = deviceMotion.userAcceleration.x
-                        yla[aIndex] = deviceMotion.userAcceleration.y
-                        zla[aIndex] = deviceMotion.userAcceleration.z
-                        xra[aIndex] = deviceMotion.attitude.quaternion.x
-                        yra[aIndex] = deviceMotion.attitude.quaternion.y
-                        zra[aIndex] = deviceMotion.attitude.quaternion.z
-                        cra[aIndex] = deviceMotion.attitude.quaternion.w
-                    } else {
-                        xla[aIndex] = 0.0
-                        yla[aIndex] = 0.0
-                        zla[aIndex] = 0.0
-                        xra[aIndex] = 0.0
-                        yra[aIndex] = 0.0
-                        zra[aIndex] = 0.0
-                        cra[aIndex] = 0.0
+                if buffer.aFill >= accelerometerSamples {
+                    var x = 0.0, y = 0.0, z = 0.0
+                    for i in 0..<accelerometerSamples {
+                        x += buffer.xa[i]; y += buffer.ya[i]; z += buffer.za[i]
                     }
-
-                    aIndex = (aIndex + 1) % accelerometerSamples
-                    aFill += 1
-
-                    if aFill >= accelerometerSamples {
-                        var x = 0.0
-                        var y = 0.0
-                        var z = 0.0
-                        var xl = 0.0
-                        var yl = 0.0
-                        var zl = 0.0
-                        var xr = 0.0
-                        var yr = 0.0
-                        var zr = 0.0
-                        var cr = 0.0
-                        for i in 0..<accelerometerSamples {
-                            x += xa[i]
-                            y += ya[i]
-                            z += za[i]
-                            xl += xla[i]
-                            yl += yla[i]
-                            zl += zla[i]
-                            xr += xla[i]
-                            yr += yla[i]
-                            zr += zla[i]
-                            cr += zla[i]
-                        }
-                        x /= Double(accelerometerSamples)
-                        y /= Double(accelerometerSamples)
-                        z /= Double(accelerometerSamples)
-                        xl /= Double(accelerometerSamples)
-                        yl /= Double(accelerometerSamples)
-                        zl /= Double(accelerometerSamples)
-                        xr /= Double(accelerometerSamples)
-                        yr /= Double(accelerometerSamples)
-                        zr /= Double(accelerometerSamples)
-                        cr /= Double(accelerometerSamples)
-
-                        self.addAcceleration(x: x, y: y, z: z, xl: xl, yl: yl, zl: zl, xr: xr, yr: yr, zr: zr, cr: cr)
-                        aFill = accelerometerSamples - accelerometerSteps
-                    }
+                    let count = Double(accelerometerSamples)
+                    x /= count; y /= count; z /= count
+                    self.addAcceleration(x: x, y: y, z: z, xl: 0, yl: 0, zl: 0, xr: 0, yr: 0, zr: 0, cr: 0)
+                    buffer.aFill = accelerometerSamples - accelerometerSteps
                 }
             }
         }
     }
 
     public func stopRecording() {
-        let appDelegate = AppDelegate.shared()
+        let appDelegate = self.appDelegate ?? AppDelegate.shared()
         timer?.invalidate()
         timer = nil
+        motionQueue.cancelAllOperations()
+        self.accelerometerBuffer = nil
 
         if appDelegate.mm.isGyroActive {
             appDelegate.mm.stopGyroUpdates()
@@ -615,6 +676,8 @@ public class Trip: UploaderObject, CLLocationManagerDelegate {
         appDelegate.lm.stopUpdatingLocation()
         appDelegate.lm.delegate = nil
 
+        try? locationsFile?.synchronize()
+        try? motionsFile?.synchronize()
         try? locationsFile?.close()
         try? motionsFile?.close()
         locationsFile = nil
@@ -628,6 +691,13 @@ public class Trip: UploaderObject, CLLocationManagerDelegate {
                 self.offlineIncidentDectection()
             }
             self.save()
+        }
+    }
+
+    public func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
+        let gyroData = AppDelegate.shared().mm.gyroData
+        for location in locations {
+            addLocation(location, withGyroData: gyroData)
         }
     }
 
@@ -704,29 +774,47 @@ public class Trip: UploaderObject, CLLocationManagerDelegate {
     }
 
     public func addLocation(_ location: CLLocation, withGyroData gyroData: CMGyroData?) {
+        print("[Trip] addLocation - lat: \(location.coordinate.latitude), lon: \(location.coordinate.longitude), speed: \(location.speed)")
+        
         if startLocation == nil {
             startLocation = location
+            print("[Trip] Set startLocation")
         }
 
         let previousTripLocation = tripLocations.lastObject as? TripLocation
-        let appDelegate = AppDelegate.shared()
-        let deferredSecs = appDelegate.defaults.integer(forKey: "deferredSecs")
-        let deferredMeters = appDelegate.defaults.integer(forKey: "deferredMeters")
-        let now = Date().timeIntervalSince1970
+        let currentAppDelegate = appDelegate ?? AppDelegate.shared()
+        let deferredSecs = currentAppDelegate.defaults.integer(forKey: "deferredSecs")
+        let deferredMeters = currentAppDelegate.defaults.integer(forKey: "deferredMeters")
 
-        if ((deferredSecs == 0 || now - (startLocation?.timestamp.timeIntervalSince1970 ?? now) > Double(deferredSecs)) &&
-            (deferredMeters == 0 || location.distance(from: startLocation ?? location) > Double(deferredMeters))) {
+        guard let startLocation = startLocation else {
+            print("[Trip] startLocation is nil, cannot process location")
+            return
+        }
+
+        let referenceDate = recordingStartDate ?? startLocation.timestamp
+        let timeSinceStart = location.timestamp.timeIntervalSince(referenceDate)
+        let distanceFromStart = location.distance(from: startLocation)
+
+        print("[Trip] Deferred check - secs: \(deferredSecs), meters: \(deferredMeters), timeSinceStart: \(timeSinceStart), distanceFromStart: \(distanceFromStart)")
+
+        // Match logic: check against startLocation, not previousLocation
+        if ((deferredSecs == 0 || timeSinceStart > Double(deferredSecs)) &&
+            (deferredMeters == 0 || distanceFromStart > Double(deferredMeters))) {
             let newLocation = TripLocation()
             newLocation.location = location
             let gyro = TripGyro()
             gyro.x = gyroData?.rotationRate.x ?? 0
             gyro.y = gyroData?.rotationRate.y ?? 0
             gyro.z = gyroData?.rotationRate.z ?? 0
+            if let prevLoc = (tripLocations.lastObject as? TripLocation)?.location {
+                accumulatedLength += location.distance(from: prevLoc)
+            }
             tripLocations.add(newLocation)
+            lastLocation = location
+            
             let csvString = locationString(from: newLocation, gyro: gyro, closePassInfo: nil)
             if let data = csvString.data(using: .utf8) {
                 locationsFile?.write(data)
-                try? locationsFile?.synchronize()
             }
             newLocation.gyro = gyro
 
@@ -735,8 +823,8 @@ public class Trip: UploaderObject, CLLocationManagerDelegate {
                 if let largestXMotion {
                     let largestX = largestXMotion.maxOfMotionsX - largestXMotion.minOfMotionsX
                     if lastX > largestX {
-                        secondLargestXMotion = largestXMotion
-                        largestXMotion = previousTripLocation
+                        self.secondLargestXMotion = largestXMotion
+                        self.largestXMotion = previousTripLocation
                     } else if let secondLargestXMotion {
                         let secondLargestX = secondLargestXMotion.maxOfMotionsX - secondLargestXMotion.minOfMotionsX
                         if lastX > secondLargestX {
@@ -751,8 +839,8 @@ public class Trip: UploaderObject, CLLocationManagerDelegate {
                 if let largestYMotion {
                     let largestY = largestYMotion.maxOfMotionsY - largestYMotion.minOfMotionsY
                     if lastY > largestY {
-                        secondLargestYMotion = largestYMotion
-                        largestYMotion = previousTripLocation
+                        self.secondLargestYMotion = largestYMotion
+                        self.largestYMotion = previousTripLocation
                     } else if let secondLargestYMotion {
                         let secondLargestY = secondLargestYMotion.maxOfMotionsY - secondLargestYMotion.minOfMotionsY
                         if lastY > secondLargestY {
@@ -767,8 +855,8 @@ public class Trip: UploaderObject, CLLocationManagerDelegate {
                 if let largestZMotion {
                     let largestZ = largestZMotion.maxOfMotionsZ - largestZMotion.minOfMotionsZ
                     if lastZ > largestZ {
-                        secondLargestZMotion = largestZMotion
-                        largestZMotion = previousTripLocation
+                        self.secondLargestZMotion = largestZMotion
+                        self.largestZMotion = previousTripLocation
                     } else if let secondLargestZMotion {
                         let secondLargestZ = secondLargestZMotion.maxOfMotionsZ - secondLargestZMotion.minOfMotionsZ
                         if lastZ > secondLargestZ {
@@ -809,7 +897,6 @@ public class Trip: UploaderObject, CLLocationManagerDelegate {
         let csvString = motionString(from: tripMotion)
         if let data = csvString.data(using: .utf8) {
             motionsFile?.write(data)
-            try? motionsFile?.synchronize()
         }
 
         lastTripLocation.minOfMotionsX = min(lastTripLocation.minOfMotionsX, tripMotion.x)
@@ -821,11 +908,13 @@ public class Trip: UploaderObject, CLLocationManagerDelegate {
     }
 
     public func durationStartDate() -> Date? {
-        (duration() as DateInterval?)?.start
+        guard let nsInterval = duration() else { return nil }
+        return nsInterval.startDate
     }
 
     public func durationEndDate() -> Date? {
-        (duration() as DateInterval?)?.end
+        guard let nsInterval = duration() else { return nil }
+        return nsInterval.endDate
     }
 
     private func removeRecordingCheckpoint() {
@@ -839,6 +928,31 @@ public class Trip: UploaderObject, CLLocationManagerDelegate {
         if let jsonData = try? JSONSerialization.data(withJSONObject: checkpoint, options: []) {
             try? jsonData.write(to: checkpointURL, options: .atomic)
         }
+    }
+
+    public static func loadIncompleteTrip() -> Trip? {
+        guard let identifier = recoverableIdentifiers().first else {
+            return nil
+        }
+
+        return tripFromCheckpoint(
+            at: checkpointURL(forIdentifier: identifier.intValue)
+        )
+    }
+
+    public func resumeRecording(from startDate: Date) {
+        self.recordingStartDate = startDate
+        self.appDelegate = AppDelegate.shared()
+
+        let documentDirectoryURL = Self.documentsDirectoryURL()
+        let locationsURL = documentDirectoryURL.appendingPathComponent("TripLocations-\(identifier).csv")
+        let motionsURL = documentDirectoryURL.appendingPathComponent("TripMotions-\(identifier).csv")
+
+        locationsFile = FileHandle(forWritingAtPath: locationsURL.path)
+        motionsFile = FileHandle(forWritingAtPath: motionsURL.path)
+        try? locationsFile?.seekToEnd()
+        try? motionsFile?.seekToEnd()
+        saveRecordingCheckpoint()
     }
 
     private func removeLegacyCSVFiles() {
@@ -860,35 +974,33 @@ public class Trip: UploaderObject, CLLocationManagerDelegate {
             "bikeTypeId": bikeTypeId,
             "positionId": positionId,
             "childseat": childseat,
-            "trailer": trailer
+            "trailer": trailer,
+            "recordingStartDate": recordingStartDate?.timeIntervalSince1970 ?? 0
         ]
     }
 
     public static func allStoredIdentifiers() -> [NSNumber] {
         var identifiers: [Int] = []
-        let defaultsKeys = UserDefaults.standard.dictionaryRepresentation().keys.sorted()
-
-        for key in defaultsKeys where key.hasPrefix("Trip-") {
-            let id = Int(key.dropFirst("Trip-".count)) ?? 0
-            if id > 0 {
-                print("[Trip] move from NSUserDefaults to Files \(id)")
-                if let trip = Trip(fromStorage: id) {
-                    trip.save()
-                }
-            }
-        }
 
         if let documentDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first,
            let contents = try? FileManager.default.contentsOfDirectory(atPath: documentDirectory.path) {
-            for content in contents where content.hasPrefix("Trip-") {
-                let id = Int(content.dropFirst("Trip-".count).dropLast(".json".count)) ?? 0
-                if id > 0 && !identifiers.contains(id) {
+            for content in contents where content.hasPrefix("Trip-") && content.hasSuffix(".json") {
+                let idString = content.dropFirst("Trip-".count).dropLast(".json".count)
+                if let id = Int(idString), id > 0 && !identifiers.contains(id) {
                     identifiers.append(id)
                 }
             }
         }
 
-        return identifiers.map { NSNumber(value: $0) }
+        let defaultsKeys = UserDefaults.standard.dictionaryRepresentation().keys
+        for key in defaultsKeys where key.hasPrefix("Trip-") {
+            let idString = key.dropFirst("Trip-".count)
+            if let id = Int(idString), id > 0 && !identifiers.contains(id) {
+                identifiers.append(id)
+            }
+        }
+
+        return identifiers.sorted().map { NSNumber(value: $0) }
     }
 
     public static func recoverIncompleteTrips() {
@@ -1007,12 +1119,18 @@ public class Trip: UploaderObject, CLLocationManagerDelegate {
         trip.positionId = (checkpoint["positionId"] as? NSNumber)?.intValue ?? 0
         trip.childseat = (checkpoint["childseat"] as? NSNumber)?.boolValue ?? false
         trip.trailer = (checkpoint["trailer"] as? NSNumber)?.boolValue ?? false
+        if let timestamp = checkpoint["recordingStartDate"] as? NSNumber,
+           timestamp.doubleValue > 0 {
+            trip.recordingStartDate = Date(
+                timeIntervalSince1970: timestamp.doubleValue
+            )
+        }
 
         var locationEntries: [(timestamp: Double, location: TripLocation)] = []
         for line in locationsString.components(separatedBy: .newlines) where !line.isEmpty {
             guard let location = tripLocation(fromCSVLine: line) else { continue }
             let fields = line.components(separatedBy: ",")
-            let timestamp = Double(fields[safe: 5] ?? "0") ?? 0
+            let timestamp = Double(fields[5] ?? "0") ?? 0
             locationEntries.append((timestamp: timestamp, location: location))
         }
 
@@ -1020,7 +1138,7 @@ public class Trip: UploaderObject, CLLocationManagerDelegate {
         for line in motionsString.components(separatedBy: .newlines) where !line.isEmpty {
             guard let motion = tripMotion(fromCSVLine: line) else { continue }
             let fields = line.components(separatedBy: ",")
-            let timestamp = Double(fields[safe: 5] ?? "0") ?? 0
+            let timestamp = Double(fields[5] ?? "0") ?? 0
             motionEntries.append((timestamp: timestamp, motion: motion))
         }
 
@@ -1069,80 +1187,222 @@ public class Trip: UploaderObject, CLLocationManagerDelegate {
         return trip
     }
 
+    private static func readline(_ fh: FileHandle) -> String? {
+        var line = ""
+        while true {
+            let data = fh.readData(ofLength: 1)
+            if data.isEmpty {
+                return line.isEmpty ? nil : line
+            }
+            guard let char = String(data: data, encoding: .utf8) else { continue }
+            if char == "\n" {
+                return line
+            }
+            line += char
+        }
+    }
+
+    private func locationString(from tripLocation: TripLocation, gyro: TripGyro?, closePassInfo: ClosePassInfo?) -> String {
+        String(
+            format: "%f,%f,%f,%f,%f,%.0f,%f,%f,%f,%f,%ld,%ld,%ld,%ld,%d,%f,%f,%f,%f,%f,%f,%f\n",
+            tripLocation.location.coordinate.latitude,
+            tripLocation.location.coordinate.longitude,
+            0.0,
+            0.0,
+            0.0,
+            round(tripLocation.location.timestamp.timeIntervalSince1970) * 1000.0,
+            tripLocation.location.horizontalAccuracy,
+            gyro?.x ?? 0.0,
+            gyro?.y ?? 0.0,
+            gyro?.z ?? 0.0,
+            closePassInfo?.leftSensor1Value?.intValue ?? -1,
+            closePassInfo?.leftSensor2Value?.intValue ?? -1,
+            closePassInfo?.rightSensor1Value?.intValue ?? -1,
+            closePassInfo?.rightSensor2Value?.intValue ?? -1,
+            closePassInfo != nil ? 1 : 0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+        )
+    }
+
+    private func motionString(from tripMotion: TripMotion) -> String {
+        String(
+            format: ",,%f,%f,%f,%.0f,,,,,,,,,,%f,%f,%f,%f,%f,%f,%f\n",
+            tripMotion.x,
+            tripMotion.y,
+            tripMotion.z,
+            round(tripMotion.timestamp * 1000.0),
+            tripMotion.xl,
+            tripMotion.yl,
+            tripMotion.zl,
+            tripMotion.xr,
+            tripMotion.yr,
+            tripMotion.zr,
+            tripMotion.cr
+        )
+    }
+
+    private func convertTripLocationToDictionary(_ tripLocation: TripLocation) -> [String: Any] {
+        var dict: [String: Any] = [
+            "lat": tripLocation.location.coordinate.latitude,
+            "lon": tripLocation.location.coordinate.longitude,
+            "alt": tripLocation.location.altitude,
+            "horizontalAccuracy": tripLocation.location.horizontalAccuracy,
+            "verticalAccuracy": tripLocation.location.verticalAccuracy,
+            "speed": tripLocation.location.speed,
+            "course": tripLocation.location.course,
+            "timestamp": tripLocation.location.timestamp.timeIntervalSince1970,
+            "minOfMotionsX": tripLocation.minOfMotionsX,
+            "maxOfMotionsX": tripLocation.maxOfMotionsX,
+            "minOfMotionsY": tripLocation.minOfMotionsY,
+            "maxOfMotionsY": tripLocation.maxOfMotionsY,
+            "minOfMotionsZ": tripLocation.minOfMotionsZ,
+            "maxOfMotionsZ": tripLocation.maxOfMotionsZ
+        ]
+
+        if let gyro = tripLocation.gyro {
+            dict["gyro"] = [
+                "x": gyro.x,
+                "y": gyro.y,
+                "z": gyro.z
+            ]
+        }
+
+        if let closePassInfo = tripLocation.closePassInfo {
+            dict["closePassInfo"] = [
+                "leftSensorValue": closePassInfo.leftSensorValue?.intValue ?? -1,
+                "rightSensorValue": closePassInfo.rightSensorValue?.intValue ?? -1,
+                "leftSensor1Value": closePassInfo.leftSensor1Value?.intValue ?? -1,
+                "leftSensor2Value": closePassInfo.leftSensor2Value?.intValue ?? -1,
+                "rightSensor1Value": closePassInfo.rightSensor1Value?.intValue ?? -1,
+                "rightSensor2Value": closePassInfo.rightSensor2Value?.intValue ?? -1
+            ]
+        }
+
+        if let annotation = tripLocation.tripAnnotation {
+            dict["tripAnnotation"] = [
+                "incidentId": annotation.incidentId,
+                "bus": annotation.bus,
+                "bicycle": annotation.bicycle,
+                "pedestrian": annotation.pedestrian,
+                "delivery": annotation.delivery,
+                "commercial": annotation.commercial,
+                "motorcycle": annotation.motorcycle,
+                "car": annotation.car,
+                "taxi": annotation.taxi,
+                "other": annotation.other,
+                "escooter": annotation.escooter,
+                "frightening": annotation.frightening,
+                "source": annotation.source,
+                "comment": annotation.comment ?? ""
+            ]
+        }
+
+        let motionsArray = NSMutableArray()
+        for case let motion as TripMotion in tripLocation.tripMotions {
+            motionsArray.add([
+                "x": motion.x,
+                "y": motion.y,
+                "z": motion.z,
+                "xl": motion.xl,
+                "yl": motion.yl,
+                "zl": motion.zl,
+                "xr": motion.xr,
+                "yr": motion.yr,
+                "zr": motion.zr,
+                "cr": motion.cr,
+                "timestamp": motion.timestamp
+            ])
+        }
+        dict["tripMotions"] = motionsArray
+
+        return dict
+    }
+
     private static func tripLocation(fromDictionary dict: [String: Any]) -> TripLocation? {
-        guard let timestamp = (dict["timestamp"] as? NSNumber)?.doubleValue,
-              let lat = (dict["lat"] as? NSNumber)?.doubleValue,
-              let lon = (dict["lon"] as? NSNumber)?.doubleValue else {
+        guard let lat = dict["lat"] as? Double,
+              let lon = dict["lon"] as? Double else {
             return nil
         }
 
-        let speed = (dict["speed"] as? NSNumber)?.doubleValue ?? 0
-        let horizontalAccuracy = (dict["horizontalAccuracy"] as? NSNumber)?.doubleValue ?? 0
         let location = CLLocation(
             coordinate: CLLocationCoordinate2D(latitude: lat, longitude: lon),
-            altitude: -1,
-            horizontalAccuracy: horizontalAccuracy,
-            verticalAccuracy: -1,
-            course: -1,
-            speed: speed,
-            timestamp: Date(timeIntervalSince1970: timestamp)
+            altitude: dict["alt"] as? Double ?? 0.0,
+            horizontalAccuracy: dict["horizontalAccuracy"] as? Double ?? 0.0,
+            verticalAccuracy: dict["verticalAccuracy"] as? Double ?? 0.0,
+            course: dict["course"] as? Double ?? 0.0,
+            speed: dict["speed"] as? Double ?? 0.0,
+            timestamp: Date(timeIntervalSince1970: dict["timestamp"] as? Double ?? Date().timeIntervalSince1970)
         )
 
-        let tripLocation = TripLocation(location: location)
+        let tripLocation = TripLocation()
+        tripLocation.location = location
+        tripLocation.minOfMotionsX = dict["minOfMotionsX"] as? Double ?? 0.0
+        tripLocation.maxOfMotionsX = dict["maxOfMotionsX"] as? Double ?? 0.0
+        tripLocation.minOfMotionsY = dict["minOfMotionsY"] as? Double ?? 0.0
+        tripLocation.maxOfMotionsY = dict["maxOfMotionsY"] as? Double ?? 0.0
+        tripLocation.minOfMotionsZ = dict["minOfMotionsZ"] as? Double ?? 0.0
+        tripLocation.maxOfMotionsZ = dict["maxOfMotionsZ"] as? Double ?? 0.0
 
-        if let a = dict["a"] as? NSNumber,
-           let b = dict["b"] as? NSNumber,
-           let c = dict["c"] as? NSNumber {
+        if let gyroDict = dict["gyro"] as? [String: Any] {
             let gyro = TripGyro()
-            gyro.x = a.doubleValue
-            gyro.y = b.doubleValue
-            gyro.z = c.doubleValue
+            gyro.x = gyroDict["x"] as? Double ?? 0.0
+            gyro.y = gyroDict["y"] as? Double ?? 0.0
+            gyro.z = gyroDict["z"] as? Double ?? 0.0
             tripLocation.gyro = gyro
         }
 
-        if let leftSensorValue = dict["leftSensorVal"] as? NSNumber,
-           let rightSensorValue = dict["rightSensorVal"] as? NSNumber {
+        if let closePassDict = dict["closePassInfo"] as? [String: Any] {
             let closePass = ClosePassInfo()
-            closePass.leftSensorValue = leftSensorValue
-            closePass.rightSensorValue = rightSensorValue
+            closePass.leftSensorValue = NSNumber(value: closePassDict["leftSensorValue"] as? Int ?? -1)
+            closePass.rightSensorValue = NSNumber(value: closePassDict["rightSensorValue"] as? Int ?? -1)
+            closePass.leftSensor1Value = NSNumber(value: closePassDict["leftSensor1Value"] as? Int ?? -1)
+            closePass.leftSensor2Value = NSNumber(value: closePassDict["leftSensor2Value"] as? Int ?? -1)
+            closePass.rightSensor1Value = NSNumber(value: closePassDict["rightSensor1Value"] as? Int ?? -1)
+            closePass.rightSensor2Value = NSNumber(value: closePassDict["rightSensor2Value"] as? Int ?? -1)
             tripLocation.closePassInfo = closePass
         }
 
-        tripLocation.tripMotions = NSMutableArray()
-        if let tripMotionsArray = dict["tripMotions"] as? [[String: Any]] {
-            for tripMotionDict in tripMotionsArray {
-                let tripMotion = TripMotion()
-                tripMotion.x = (tripMotionDict["x"] as? NSNumber)?.doubleValue ?? 0
-                tripMotion.y = (tripMotionDict["y"] as? NSNumber)?.doubleValue ?? 0
-                tripMotion.z = (tripMotionDict["z"] as? NSNumber)?.doubleValue ?? 0
-                tripMotion.xl = (tripMotionDict["xl"] as? NSNumber)?.doubleValue ?? 0
-                tripMotion.yl = (tripMotionDict["yl"] as? NSNumber)?.doubleValue ?? 0
-                tripMotion.zl = (tripMotionDict["zl"] as? NSNumber)?.doubleValue ?? 0
-                tripMotion.xr = (tripMotionDict["xr"] as? NSNumber)?.doubleValue ?? 0
-                tripMotion.yr = (tripMotionDict["yr"] as? NSNumber)?.doubleValue ?? 0
-                tripMotion.zr = (tripMotionDict["zr"] as? NSNumber)?.doubleValue ?? 0
-                tripMotion.cr = (tripMotionDict["cr"] as? NSNumber)?.doubleValue ?? 0
-                tripMotion.timestamp = (tripMotionDict["timestamp"] as? NSNumber)?.doubleValue ?? 0
-                tripLocation.tripMotions.add(tripMotion)
-            }
+        if let annotationDict = dict["tripAnnotation"] as? [String: Any] {
+            let annotation = TripAnnotation()
+            annotation.incidentId = annotationDict["incidentId"] as? Int ?? 0
+            annotation.bus = annotationDict["bus"] as? Bool ?? false
+            annotation.bicycle = annotationDict["bicycle"] as? Bool ?? false
+            annotation.pedestrian = annotationDict["pedestrian"] as? Bool ?? false
+            annotation.delivery = annotationDict["delivery"] as? Bool ?? false
+            annotation.commercial = annotationDict["commercial"] as? Bool ?? false
+            annotation.motorcycle = annotationDict["motorcycle"] as? Bool ?? false
+            annotation.car = annotationDict["car"] as? Bool ?? false
+            annotation.taxi = annotationDict["taxi"] as? Bool ?? false
+            annotation.other = annotationDict["other"] as? Bool ?? false
+            annotation.escooter = annotationDict["escooter"] as? Bool ?? false
+            annotation.frightening = annotationDict["frightening"] as? Bool ?? false
+            annotation.source = annotationDict["source"] as? String ?? "Manual"
+            annotation.comment = annotationDict["comment"] as? String
+            tripLocation.tripAnnotation = annotation
         }
 
-        if let tripAnnotationDict = dict["tripAnnotation"] as? [String: Any] {
-            let tripAnnotation = TripAnnotation()
-            tripAnnotation.incidentId = (tripAnnotationDict["incidentId"] as? NSNumber)?.intValue ?? 0
-            tripAnnotation.frightening = (tripAnnotationDict["frightening"] as? NSNumber)?.boolValue ?? false
-            tripAnnotation.car = (tripAnnotationDict["car"] as? NSNumber)?.boolValue ?? false
-            tripAnnotation.bus = (tripAnnotationDict["bus"] as? NSNumber)?.boolValue ?? false
-            tripAnnotation.taxi = (tripAnnotationDict["taxi"] as? NSNumber)?.boolValue ?? false
-            tripAnnotation.commercial = (tripAnnotationDict["commercial"] as? NSNumber)?.boolValue ?? false
-            tripAnnotation.delivery = (tripAnnotationDict["delivery"] as? NSNumber)?.boolValue ?? false
-            tripAnnotation.bicycle = (tripAnnotationDict["bicycle"] as? NSNumber)?.boolValue ?? false
-            tripAnnotation.motorcycle = (tripAnnotationDict["motorcycle"] as? NSNumber)?.boolValue ?? false
-            tripAnnotation.pedestrian = (tripAnnotationDict["pedestrian"] as? NSNumber)?.boolValue ?? false
-            tripAnnotation.other = (tripAnnotationDict["other"] as? NSNumber)?.boolValue ?? false
-            tripAnnotation.escooter = (tripAnnotationDict["escooter"] as? NSNumber)?.boolValue ?? false
-            tripAnnotation.comment = tripAnnotationDict["comment"] as? String
-            tripLocation.tripAnnotation = tripAnnotation
+        if let motions = dict["tripMotions"] as? [[String: Any]] {
+            for motionDict in motions {
+                let motion = TripMotion()
+                motion.x = motionDict["x"] as? Double ?? 0.0
+                motion.y = motionDict["y"] as? Double ?? 0.0
+                motion.z = motionDict["z"] as? Double ?? 0.0
+                motion.xl = motionDict["xl"] as? Double ?? 0.0
+                motion.yl = motionDict["yl"] as? Double ?? 0.0
+                motion.zl = motionDict["zl"] as? Double ?? 0.0
+                motion.xr = motionDict["xr"] as? Double ?? 0.0
+                motion.yr = motionDict["yr"] as? Double ?? 0.0
+                motion.zr = motionDict["zr"] as? Double ?? 0.0
+                motion.cr = motionDict["cr"] as? Double ?? 0.0
+                motion.timestamp = motionDict["timestamp"] as? Double ?? Date().timeIntervalSince1970
+                tripLocation.tripMotions.add(motion)
+            }
         }
 
         return tripLocation
@@ -1150,54 +1410,33 @@ public class Trip: UploaderObject, CLLocationManagerDelegate {
 
     private static func tripLocation(fromCSVLine line: String) -> TripLocation? {
         let fields = line.components(separatedBy: ",")
-        guard fields.count >= 6,
+        guard fields.count >= 7,
               let lat = Double(fields[0]),
               let lon = Double(fields[1]),
-              let timestampMs = Double(fields[5]) else {
+              let timestampMs = Double(fields[5]),
+              let horizontalAccuracy = Double(fields[6]) else {
             return nil
         }
 
-        let accuracy = (fields.count > 6 && !fields[6].isEmpty) ? (Double(fields[6]) ?? -1) : -1
         let location = CLLocation(
             coordinate: CLLocationCoordinate2D(latitude: lat, longitude: lon),
-            altitude: -1,
-            horizontalAccuracy: accuracy,
-            verticalAccuracy: -1,
-            course: -1,
-            speed: -1,
+            altitude: 0.0,
+            horizontalAccuracy: horizontalAccuracy,
+            verticalAccuracy: 0.0,
+            course: 0.0,
+            speed: 0.0,
             timestamp: Date(timeIntervalSince1970: timestampMs / 1000.0)
         )
 
-        let tripLocation = TripLocation(location: location)
+        let tripLocation = TripLocation()
+        tripLocation.location = location
 
-        if fields.count > 9 {
-            let hasGyro = !fields[7].isEmpty || !fields[8].isEmpty || !fields[9].isEmpty
-            if hasGyro {
-                let gyro = TripGyro()
-                gyro.x = Double(fields[7]) ?? 0
-                gyro.y = Double(fields[8]) ?? 0
-                gyro.z = Double(fields[9]) ?? 0
-                tripLocation.gyro = gyro
-            }
-        }
-
-        var hasClosePass = fields.count > 14 && Int(fields[14]) == 1
-        if !hasClosePass && fields.count > 13 {
-            hasClosePass = !fields[10].isEmpty || !fields[11].isEmpty || !fields[12].isEmpty || !fields[13].isEmpty
-        }
-
-        if hasClosePass {
-            let closePassInfo = ClosePassInfo()
-            closePassInfo.location = location
-            if fields.count > 10, !fields[10].isEmpty { closePassInfo.leftSensor1Value = NSNumber(value: Double(fields[10]) ?? 0) }
-            if fields.count > 11, !fields[11].isEmpty { closePassInfo.leftSensor2Value = NSNumber(value: Double(fields[11]) ?? 0) }
-            if fields.count > 12, !fields[12].isEmpty { closePassInfo.rightSensor1Value = NSNumber(value: Double(fields[12]) ?? 0) }
-            if fields.count > 13, !fields[13].isEmpty { closePassInfo.rightSensor2Value = NSNumber(value: Double(fields[13]) ?? 0) }
-            tripLocation.closePassInfo = closePassInfo
-
-            let tripAnnotation = TripAnnotation()
-            tripAnnotation.incidentId = 1
-            tripLocation.tripAnnotation = tripAnnotation
+        if fields.count >= 10 {
+            let gyro = TripGyro()
+            gyro.x = Double(fields[7]) ?? 0.0
+            gyro.y = Double(fields[8]) ?? 0.0
+            gyro.z = Double(fields[9]) ?? 0.0
+            tripLocation.gyro = gyro
         }
 
         return tripLocation
@@ -1205,286 +1444,30 @@ public class Trip: UploaderObject, CLLocationManagerDelegate {
 
     private static func tripMotion(fromCSVLine line: String) -> TripMotion? {
         let fields = line.components(separatedBy: ",")
-        guard fields.count >= 22 else { return nil }
-
-        let tripMotion = TripMotion()
-        tripMotion.x = Double(fields[2]) ?? 0
-        tripMotion.y = Double(fields[3]) ?? 0
-        tripMotion.z = Double(fields[4]) ?? 0
-        tripMotion.timestamp = (Double(fields[5]) ?? 0) / 1000.0
-        tripMotion.xl = Double(fields[15]) ?? 0
-        tripMotion.yl = Double(fields[16]) ?? 0
-        tripMotion.zl = Double(fields[17]) ?? 0
-        tripMotion.xr = Double(fields[18]) ?? 0
-        tripMotion.yr = Double(fields[19]) ?? 0
-        tripMotion.zr = Double(fields[20]) ?? 0
-        tripMotion.cr = Double(fields[21]) ?? 0
-        return tripMotion
-    }
-
-    private func locationString(from tripLocation: TripLocation, gyro: TripGyro?, closePassInfo: ClosePassInfo?) -> String {
-        let lat = tripLocation.location.coordinate.latitude
-        let lon = tripLocation.location.coordinate.longitude
-        let horizontalAccuracy = tripLocation.location.horizontalAccuracy
-
-        var csvString = String(format: "%f,%f,", lat, lon)
-        csvString += String(format: "%f,%f,%f,%.0f,", 0.0, 0.0, 0.0, round(tripLocation.location.timestamp.timeIntervalSince1970) * 1000.0)
-
-        if horizontalAccuracy == -1.0 {
-            csvString += ","
-        } else {
-            csvString += String(format: "%f,", horizontalAccuracy)
+        guard fields.count >= 6,
+              let x = Double(fields[2]),
+              let y = Double(fields[3]),
+              let z = Double(fields[4]),
+              let timestampMs = Double(fields[5]) else {
+            return nil
         }
 
-        if let gyro {
-            csvString += String(format: "%f,%f,%f,", gyro.x, gyro.y, gyro.z)
-        } else {
-            csvString += ",,,"
+        let motion = TripMotion()
+        motion.x = x
+        motion.y = y
+        motion.z = z
+        motion.timestamp = timestampMs / 1000.0
+
+        if fields.count >= 22 {
+            motion.xl = Double(fields[15]) ?? 0.0
+            motion.yl = Double(fields[16]) ?? 0.0
+            motion.zl = Double(fields[17]) ?? 0.0
+            motion.xr = Double(fields[18]) ?? 0.0
+            motion.yr = Double(fields[19]) ?? 0.0
+            motion.zr = Double(fields[20]) ?? 0.0
+            motion.cr = Double(fields[21]) ?? 0.0
         }
 
-        var isClosePassEvent = "0"
-        var leftSensorVal1 = ""
-        var leftSensorVal2 = ""
-        var rightSensorVal1 = ""
-        var rightSensorVal2 = ""
-
-        if let closePassInfo {
-            isClosePassEvent = "1"
-            leftSensorVal1 = closePassInfo.leftSensor1Value?.stringValue ?? ""
-            leftSensorVal2 = closePassInfo.leftSensor2Value?.stringValue ?? ""
-            rightSensorVal1 = closePassInfo.rightSensor1Value?.stringValue ?? ""
-            rightSensorVal2 = closePassInfo.rightSensor2Value?.stringValue ?? ""
-        }
-
-        csvString += "\(leftSensorVal1),\(leftSensorVal2),\(rightSensorVal1),\(rightSensorVal2),\(isClosePassEvent),"
-        csvString += ",,,,,,"
-        csvString += "\n"
-        return csvString
-    }
-
-    private func motionString(from tripMotion: TripMotion) -> String {
-        var csvString = ",,"
-        csvString += String(format: "%f,%f,%f,%.0f,", tripMotion.x * 9.81, tripMotion.y * 9.81, tripMotion.z * 9.81, tripMotion.timestamp * 1000.0)
-        csvString += ","
-        csvString += ",,,"
-        csvString += ",,,,,"
-        csvString += String(format: "%f,%f,%f,%f,%f,%f,%f", tripMotion.xl * 9.81, tripMotion.yl * 9.81, tripMotion.zl * 9.81, tripMotion.xr, tripMotion.yr, tripMotion.zr, tripMotion.cr)
-        csvString += "\n"
-        return csvString
-    }
-
-    private static func readline(_ handle: FileHandle) -> String? {
-        var line: String?
-        while true {
-            let data = handle.readData(ofLength: 1)
-            if data.isEmpty { break }
-            if line == nil { line = "" }
-            guard let character = String(data: data, encoding: .utf8) else { continue }
-            line?.append(character)
-            if character == "\n" { break }
-        }
-        return line
-    }
-}
-
-@objcMembers
-public class Trips: UploaderObject {
-    private unowned let appDelegate: AppDelegate
-    public private(set) var tripInfos: [NSNumber: TripInfo] = [:]
-
-    public init(appDelegate: AppDelegate) {
-        self.appDelegate = appDelegate
-        super.init()
-        self.appDelegate.trips = self
-
-        self.version = appDelegate.defaults.integer(forKey: "version")
-        self.uploaded = appDelegate.defaults.bool(forKey: "uploaded")
-        self.fileHash = appDelegate.defaults.string(forKey: "fileHash")
-        self.filePasswd = appDelegate.defaults.string(forKey: "filePasswd")
-
-        Trip.recoverIncompleteTrips()
-
-        let allTripInfos = TripInfo.allStoredIdentifiers().sorted { $0.compare($1) == .orderedAscending }
-        for identifierNumber in allTripInfos {
-            let identifier = identifierNumber.intValue
-            if let tripInfo = TripInfo(fromStorage: identifier) {
-                tripInfos[NSNumber(value: tripInfo.identifier)] = tripInfo
-            }
-        }
-
-        let allTrips = Trip.allStoredIdentifiers().sorted { $0.compare($1) == .orderedAscending }
-        for identifierNumber in allTrips {
-            let identifier = identifierNumber.intValue
-            let key = NSNumber(value: identifier)
-            if let tripInfo = tripInfos[key], tripInfo.annotationsCount != 0 {
-                continue
-            }
-            if let trip = Trip(fromStorage: identifier) {
-                let tripInfo = trip.tripInfo()
-                tripInfos[NSNumber(value: trip.identifier)] = tripInfo
-                trip.save()
-            }
-        }
-
-        if !appDelegate.defaults.bool(forKey: "copyStatisticsOnce") {
-            Utility.saveBool(key: "copyStatisticsOnce", value: true)
-            if appDelegate.regions.regionSelected {
-                save()
-                let totalRides = appDelegate.defaults.integer(forKey: "totalRides")
-                let totalDuration = appDelegate.defaults.integer(forKey: "totalDuration")
-                let totalIncidents = appDelegate.defaults.integer(forKey: "totalIncidents")
-                let totalLength = appDelegate.defaults.integer(forKey: "totalLength")
-                let totalIdle = appDelegate.defaults.integer(forKey: "totalIdle")
-                let numberOfScary = appDelegate.defaults.integer(forKey: "numberOfScary")
-                var totalSlots = (appDelegate.defaults.array(forKey: "totalSlots") as? [Int]) ?? Array(repeating: 0, count: 24)
-                if totalSlots.count < 24 {
-                    totalSlots = Array(repeating: 0, count: 24)
-                }
-
-                Utility.saveInt(key: withRegionId("totalRides", regionId: appDelegate.regions.regionId), value: totalRides)
-                Utility.saveInt(key: withRegionId("totalDuration", regionId: appDelegate.regions.regionId), value: totalDuration)
-                Utility.saveInt(key: withRegionId("totalIncidents", regionId: appDelegate.regions.regionId), value: totalIncidents)
-                Utility.saveInt(key: withRegionId("totalLength", regionId: appDelegate.regions.regionId), value: totalLength)
-                Utility.saveInt(key: withRegionId("totalIdle", regionId: appDelegate.regions.regionId), value: totalIdle)
-                Utility.saveInt(key: withRegionId("numberOfScary", regionId: appDelegate.regions.regionId), value: numberOfScary)
-                Utility.saveArray(key: withRegionId("totalSlots", regionId: appDelegate.regions.regionId), value: totalSlots as NSArray)
-            }
-        }
-    }
-
-    public convenience override init() {
-        self.init(appDelegate: AppDelegate.shared())
-    }
-
-    public func newTrip() -> Trip {
-        let trip = Trip()
-        tripInfos[NSNumber(value: trip.identifier)] = trip.tripInfo()
-        return trip
-    }
-
-    public func deleteTripWithIdentifier(_ identifier: Int) {
-        tripInfos.removeValue(forKey: NSNumber(value: identifier))
-        Trip.deleteFromStorage(identifier)
-    }
-
-    public func updateTrip(_ trip: Trip) {
-        tripInfos[NSNumber(value: trip.identifier)] = trip.tripInfo()
-    }
-
-    public func addTripToStatistics(_ trip: Trip) {
-        addTripToStatistics(trip, regionId: 0)
-        if appDelegate.regions.regionSelected {
-            addTripToStatistics(trip, regionId: appDelegate.regions.regionId)
-        }
-    }
-
-    private func addTripToStatistics(_ trip: Trip, regionId: Int) {
-        let totalRides = appDelegate.defaults.integer(forKey: withRegionId("totalRides", regionId: regionId)) + 1
-        let totalDuration = appDelegate.defaults.integer(forKey: withRegionId("totalDuration", regionId: regionId)) + Int((trip.duration()?.duration ?? 0) * 1000.0)
-        let totalIncidents = appDelegate.defaults.integer(forKey: withRegionId("totalIncidents", regionId: regionId)) + trip.tripValidAnnotations()
-        let totalLength = appDelegate.defaults.integer(forKey: withRegionId("totalLength", regionId: regionId)) + trip.length()
-        let totalIdle = appDelegate.defaults.integer(forKey: withRegionId("totalIdle", regionId: regionId)) + Int(Double(trip.idle()) * 1000.0)
-        let numberOfScary = appDelegate.defaults.integer(forKey: withRegionId("numberOfScary", regionId: regionId)) + trip.numberOfScary()
-        var totalSlots = (appDelegate.defaults.array(forKey: withRegionId("totalSlots", regionId: regionId)) as? [Int]) ?? Array(repeating: 0, count: 24)
-        if totalSlots.count < 24 {
-            totalSlots = Array(repeating: 0, count: 24)
-        }
-
-        if let start = trip.duration()?.startDate, let end = trip.duration()?.endDate {
-            let calendar = Calendar(identifier: .gregorian)
-            let startHour = calendar.component(.hour, from: start)
-            let endHour = calendar.component(.hour, from: end)
-            totalSlots[startHour] += 1
-            totalSlots[endHour] += 1
-        }
-
-        Utility.saveInt(key: withRegionId("totalRides", regionId: regionId), value: totalRides)
-        Utility.saveInt(key: withRegionId("totalDuration", regionId: regionId), value: totalDuration)
-        Utility.saveInt(key: withRegionId("totalIncidents", regionId: regionId), value: totalIncidents)
-        Utility.saveInt(key: withRegionId("totalLength", regionId: regionId), value: totalLength)
-        Utility.saveInt(key: withRegionId("totalIdle", regionId: regionId), value: totalIdle)
-        Utility.saveInt(key: withRegionId("numberOfScary", regionId: regionId), value: numberOfScary)
-        Utility.saveArray(key: withRegionId("totalSlots", regionId: regionId), value: totalSlots as NSArray)
-        Utility.writeProfile()
-    }
-
-    public override func csvFile() -> URL? {
-        let fileManager = FileManager.default
-        let fileURL = fileManager.temporaryDirectory.appendingPathComponent("trips.csv")
-        try? fileManager.removeItem(at: fileURL)
-        fileManager.createFile(atPath: fileURL.path, contents: Data(), attributes: nil)
-        guard let fh = FileHandle(forWritingAtPath: fileURL.path) else { return nil }
-
-        let bundleVersion = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "0"
-        let major = bundleVersion.components(separatedBy: ".").first ?? bundleVersion
-        var csvString = "i\(major)#\(version)\n"
-        csvString += "birth,gender,region,experience,numberOfRides,duration,numberOfIncidents,length,idle,behaviour,numberOfScary"
-        for i in 0..<24 {
-            csvString += ",\(i)"
-        }
-        csvString += "\n"
-        if let data = csvString.data(using: .utf8) {
-            fh.write(data)
-        }
-
-        let defaults = appDelegate.defaults
-        let regionId = appDelegate.regions.regionSelected ? appDelegate.regions.regionId : 0
-        csvString = String(format: "%ld,%ld,%ld,%ld,%ld,%ld,%ld,%ld,%ld,%@,%ld",
-                           defaults.integer(forKey: "ageId"),
-                           defaults.integer(forKey: "sexId"),
-                           regionId,
-                           defaults.integer(forKey: "experienceId"),
-                           defaults.integer(forKey: withRegionId("totalRides", regionId: regionId)),
-                           defaults.integer(forKey: withRegionId("totalDuration", regionId: regionId)),
-                           defaults.integer(forKey: withRegionId("totalIncidents", regionId: regionId)),
-                           defaults.integer(forKey: withRegionId("totalLength", regionId: regionId)),
-                           defaults.integer(forKey: withRegionId("totalIdle", regionId: regionId)),
-                           defaults.bool(forKey: "behaviour") ? String(defaults.integer(forKey: "behaviourValue")) : "",
-                           defaults.integer(forKey: withRegionId("numberOfScary", regionId: regionId)))
-
-        let totalSlots = defaults.array(forKey: withRegionId("totalSlots", regionId: regionId)) as? [Int] ?? Array(repeating: 0, count: 24)
-        for i in 0..<24 {
-            csvString += ",\(totalSlots[safe: i] ?? 0)"
-        }
-        csvString += "\n"
-        if let data = csvString.data(using: .utf8) {
-            fh.write(data)
-        }
-        try? fh.close()
-        return fileURL
-    }
-
-    public override func save() {
-        let regionId = appDelegate.regions.regionSelected ? appDelegate.regions.regionId : 0
-        Utility.saveInt(key: withRegionId("version", regionId: regionId), value: version)
-        Utility.saveBool(key: withRegionId("uploaded", regionId: regionId), value: uploaded)
-        if let fileHash {
-            Utility.saveString(key: withRegionId("fileHash", regionId: regionId), value: fileHash)
-        }
-        if let filePasswd {
-            Utility.saveString(key: withRegionId("filePasswd", regionId: regionId), value: filePasswd)
-        }
-        if appDelegate.regions.regionSelected {
-            Utility.writeRegionBasedProfile(regionId: appDelegate.regions.regionId)
-        }
-    }
-
-    public override func uploadFile(_ name: String, withController controller: NSObject, error errorSelector: Selector, completion completionSelector: Selector) {
-        let regionId = appDelegate.regions.regionSelected ? appDelegate.regions.regionId : 0
-        version = appDelegate.defaults.integer(forKey: withRegionId("version", regionId: regionId))
-        uploaded = appDelegate.defaults.bool(forKey: withRegionId("uploaded", regionId: regionId))
-        fileHash = appDelegate.defaults.string(forKey: withRegionId("fileHash", regionId: regionId))
-        filePasswd = appDelegate.defaults.string(forKey: withRegionId("filePasswd", regionId: regionId))
-        super.uploadFile(name, withController: controller, error: errorSelector, completion: completionSelector)
-    }
-
-    private func withRegionId(_ key: String, regionId: Int) -> String {
-        regionId == 0 ? key : "\(key)-\(regionId)"
-    }
-}
-
-private extension Array {
-    subscript(safe index: Int) -> Element? {
-        indices.contains(index) ? self[index] : nil
+        return motion
     }
 }

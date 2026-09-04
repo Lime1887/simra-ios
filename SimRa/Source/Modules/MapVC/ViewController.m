@@ -7,7 +7,6 @@
 //
 
 #import "ViewController.h"
-#import "AppDelegate.h"
 #import "Trips.h"
 #import "AnnotationView.h"
 #import "NSTimeInterval+hms.h"
@@ -69,6 +68,7 @@
 
 @property (strong, nonatomic) AnnotationView *annotationView;
 @property (strong, nonatomic) MyAnnotation *myAnnotation;
+@property (strong, nonatomic) MKPolyline *recordingRouteOverlay;
 
 @property (strong, nonatomic) UIAlertController *ac;
 
@@ -281,7 +281,7 @@
         [buttonView.bottomAnchor
             constraintEqualToAnchor:
                 self.view.safeAreaLayoutGuide.bottomAnchor
-            constant:-16.0]
+            constant:-28.0]
     ]];
 
     [self updateRecordingControlState];
@@ -307,6 +307,52 @@
     control.layer.shadowOpacity = 0.14;
     control.layer.shadowRadius = 18.0;
     control.layer.shadowOffset = CGSizeMake(0.0, 8.0);
+}
+
+- (void)updateRecordingRouteOverlay
+{
+    if (!self.trip || self.trip.tripLocations.count < 2) {
+        if (self.recordingRouteOverlay) {
+            [self.mapView removeOverlay:self.recordingRouteOverlay];
+            self.recordingRouteOverlay = nil;
+        }
+        return;
+    }
+
+    NSUInteger count = self.trip.tripLocations.count;
+    CLLocationCoordinate2D *coordinates =
+        calloc(count, sizeof(CLLocationCoordinate2D));
+
+    if (!coordinates) {
+        return;
+    }
+
+    NSUInteger index = 0;
+    for (TripLocation *tripLocation in self.trip.tripLocations) {
+        coordinates[index++] = tripLocation.location.coordinate;
+    }
+
+    MKPolyline *overlay =
+        [MKPolyline polylineWithCoordinates:coordinates
+                                      count:count];
+    free(coordinates);
+
+    if (self.recordingRouteOverlay) {
+        [self.mapView removeOverlay:self.recordingRouteOverlay];
+    }
+
+    self.recordingRouteOverlay = overlay;
+    [self.mapView addOverlay:overlay];
+}
+
+- (void)clearRecordingRouteOverlay
+{
+    if (!self.recordingRouteOverlay) {
+        return;
+    }
+
+    [self.mapView removeOverlay:self.recordingRouteOverlay];
+    self.recordingRouteOverlay = nil;
 }
 
 - (UIButtonConfiguration *)
@@ -478,7 +524,7 @@
         NO;
 
     self.trackingButton.tintColor =
-        [self controlForegroundColor];
+        [self systemTintColor];
 
     self.trackingButton.accessibilityLabel =
         NSLocalizedString(
@@ -514,7 +560,7 @@
             toItem:self.view.safeAreaLayoutGuide
             attribute:NSLayoutAttributeTrailing
             multiplier:1.0
-            constant:-10.0];
+            constant:-16.0];
 
     [NSLayoutConstraint activateConstraints:@[
         trackingBottom,
@@ -989,6 +1035,8 @@
                 forKeyPath:@"lastTripMotion"
                    options:NSKeyValueObservingOptionNew
                    context:nil];
+
+    [self updateRecordingRouteOverlay];
 }
 
 - (IBAction)stopButtonPressed:(UIBarButtonItem *)sender
@@ -1005,51 +1053,29 @@
     [self.trip removeObserver:self
                    forKeyPath:@"lastTripMotion"];
 
-    UIAlertController *ac =
-        [UIAlertController
-            alertControllerWithTitle:
-                NSLocalizedString(
-                    @"Incident Detection Running",
-                    @"Incident Detection Running"
-                )
-            message:
-                NSLocalizedString(
-                    @"Please wait",
-                    @"Please wait"
-                )
-            preferredStyle:
-                UIAlertControllerStyleAlert];
-
-    [self presentViewController:ac
-                       animated:TRUE
-                     completion:nil];
-
     [self.trip stopRecording];
 
-    [ac dismissViewControllerAnimated:TRUE
-                           completion:^{
+    self.recordedTrip = self.trip;
+    self.trip = nil;
 
-        self.recordedTrip = self.trip;
+    [self clearRecordingRouteOverlay];
 
-        [self performSegueWithIdentifier:@"trips:"
-                                  sender:nil];
+    self.annotationView.recording = FALSE;
+    self.annotationView.speed = 0.0;
+    self.annotationView.course = 0.0;
+    self.annotationView.accx = 0.0;
+    self.annotationView.accy = 0.0;
+    self.annotationView.accz = 0.0;
 
-        self.trip = nil;
+    [self.annotationView setNeedsDisplay];
 
-        self.annotationView.recording = FALSE;
-        self.annotationView.speed = 0.0;
-        self.annotationView.course = 0.0;
-        self.annotationView.accx = 0.0;
-        self.annotationView.accy = 0.0;
-        self.annotationView.accz = 0.0;
+    [self updateRecordingControlState];
 
-        [self.annotationView setNeedsDisplay];
+    self.navigationItem.leftBarButtonItem.enabled = TRUE;
+    self.navigationItem.rightBarButtonItem.enabled = TRUE;
 
-        [self updateRecordingControlState];
-
-        self.navigationItem.leftBarButtonItem.enabled = TRUE;
-        self.navigationItem.rightBarButtonItem.enabled = TRUE;
-    }];
+    [self performSegueWithIdentifier:@"trips:"
+                              sender:nil];
 }
 
 #pragma mark - Trip Updates
@@ -1124,12 +1150,14 @@
         [self.annotationView setNeedsDisplay];
     }
 
+    [self updateRecordingRouteOverlay];
+
     [self updateRecordingControlState];
 }
 
 #pragma mark - MapKit
 
-- (MKAnnotationView *)
+- (MKAnnotationView *) 
     mapView:(MKMapView *)mapView
     viewForAnnotation:(id<MKAnnotation>)annotation
 {
@@ -1166,6 +1194,22 @@
         [self.annotationView setNeedsDisplay];
 
         return self.annotationView;
+    }
+
+    return nil;
+}
+
+- (MKOverlayRenderer *)mapView:(MKMapView *)mapView
+              rendererForOverlay:(id<MKOverlay>)overlay
+{
+    if ([overlay isKindOfClass:[MKPolyline class]]) {
+        MKPolylineRenderer *renderer =
+            [[MKPolylineRenderer alloc] initWithPolyline:(MKPolyline *)overlay];
+        renderer.strokeColor = [[UIColor systemBlueColor] colorWithAlphaComponent:0.82];
+        renderer.lineWidth = 4.0;
+        renderer.lineJoin = kCGLineJoinRound;
+        renderer.lineCap = kCGLineCapRound;
+        return renderer;
     }
 
     return nil;

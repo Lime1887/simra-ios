@@ -9,7 +9,6 @@
 #import <Foundation/Foundation.h>
 #import <CoreLocation/CoreLocation.h>
 #import <CoreMotion/CoreMotion.h>
-#import "UploaderObject.h"
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -89,7 +88,7 @@ NS_ASSUME_NONNULL_BEGIN
 @property (nonatomic) NSInteger length;
 
 + (NSArray <NSNumber *> *)allStoredIdentifiers;
-- (instancetype)initFromStorage:(NSInteger)identifier;
+- (nullable instancetype)initFromStorage:(NSInteger)identifier;
 @end
 
 @interface Trip : UploaderObject <CLLocationManagerDelegate>
@@ -112,7 +111,7 @@ NS_ASSUME_NONNULL_BEGIN
 
 + (NSArray <NSNumber *> *)allStoredIdentifiers;
 + (void)recoverIncompleteTrips;
-- (instancetype)initFromStorage:(NSInteger)identifier;
+- (nullable instancetype)initFromStorage:(NSInteger)identifier;
 + (void)deleteFromStorage:(NSInteger)identifier;
 - (void)startRecording;
 - (void)stopRecording;

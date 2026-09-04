@@ -7,17 +7,33 @@
 //  (Elektrotechnik und Informatik) der TU Berlin. All rights reserved.
 //
 
-import ActivityKit
 import Foundation
+import ActivityKit
 
 @available(iOS 16.2, *)
-struct SimRaRecordingAttributes: ActivityAttributes {
+public struct SimRaRecordingAttributes: ActivityAttributes {
+
     public struct ContentState: Codable, Hashable {
-        let elapsedSeconds: Int
-        let distanceMeters: Int
-        let incidents: Int
+        public var elapsedSeconds: Int
+        public var distanceMeters: Int
+        public var incidents: Int
+
+        public init(
+            elapsedSeconds: Int,
+            distanceMeters: Int,
+            incidents: Int
+        ) {
+            self.elapsedSeconds = elapsedSeconds
+            self.distanceMeters = distanceMeters
+            self.incidents = incidents
+        }
     }
 
-    let tripId: Int
-    let bikeTypeId: Int
+    public var tripId: Int
+    public var bikeTypeId: Int
+
+    public init(tripId: Int, bikeTypeId: Int) {
+        self.tripId = tripId
+        self.bikeTypeId = bikeTypeId
+    }
 }

@@ -7,7 +7,6 @@
 //
 
 #import "MyTripsTVC.h"
-#import "AppDelegate.h"
 #import "TripEditVC.h"
 #import "NSTimeInterval+hms.h"
 
@@ -20,6 +19,15 @@
 @property (strong, nonatomic) UIAlertController *ac;
 @property (strong, nonatomic) NSMutableDictionary <NSNumber *, TripInfo *> *localTripInfos;
 @property (strong, nonatomic) NSMutableDictionary <NSNumber *, TripInfo *> *uploadedTripInfos;
+@property (strong, nonatomic) NSArray<TripInfo *> *pendingUploadTripInfos;
+@property (strong, nonatomic) TripInfo *activeUploadTripInfo;
+@property (nonatomic) NSUInteger uploadBatchIndex;
+@property (nonatomic) NSUInteger uploadBatchSuccessCount;
+@property (nonatomic) NSUInteger uploadBatchFailureCount;
+@property (strong, nonatomic) NSMutableArray<NSString *> *uploadBatchFailures;
+@property (nonatomic) dispatch_queue_t uploadQueue;
+@property (strong, nonatomic) Trip *activeUploadTrip;
+@property (strong, nonatomic) TripInfo *currentUploadingTripInfo;
 @property (weak, nonatomic) IBOutlet UIBarButtonItem *uploadButton;
 @property (weak, nonatomic) IBOutlet UIBarButtonItem *deleteButton;
 @property (strong, nonatomic) UIBarButtonItem *editButton;
@@ -60,6 +68,11 @@
     }
 }
 
+- (void)refreshTripTable {
+    [self getTripInfos];
+    [self.tableView reloadData];
+}
+
 - (TripInfo *)getTripInfo:(NSIndexPath *)indexPath {
     TripInfo *tripInfo;
     if (indexPath.section == 0) {
@@ -89,12 +102,14 @@ NSInteger revertedSort(id num1, id num2, void *context) {
     self.doneButton = [self iconBarButtonWithSystemName:@"checkmark"
                                           fallbackTitle:NSLocalizedString(@"Done", @"Done")
                                                  action:@selector(editToggle:)];
-    self.allButton = [self iconBarButtonWithSystemName:@"checkmark.circle.fill"
+    self.allButton = [self iconBarButtonWithSystemName:@"checkmark.circle"
                                          fallbackTitle:NSLocalizedString(@"All", @"Table Select All")
                                                 action:@selector(selectAll:)];
     self.noneButton = [self iconBarButtonWithSystemName:@"circle"
                                           fallbackTitle:NSLocalizedString(@"None", @"Table Select None")
                                                  action:@selector(selectNone:)];
+
+    [self configureBottomToolbar];
 
     NSMutableArray<UIBarButtonItem *> *r = [self.navigationItem.rightBarButtonItems mutableCopy];
     if (!r) {
@@ -169,11 +184,7 @@ NSInteger revertedSort(id num1, id num2, void *context) {
 }
 - (IBAction)uploadPressed:(UIBarButtonItem *)sender {
     if ([self checkRegion]) {
-        for (NSIndexPath *indexPath in self.tableView.indexPathsForSelectedRows) {
-            if (indexPath.section == 0) {
-                [self doUpload:indexPath];
-            }
-        }
+        [self beginUploadBatchWithTripInfos:[self selectedLocalTripInfos]];
     }
 }
 
@@ -201,6 +212,190 @@ NSInteger revertedSort(id num1, id num2, void *context) {
         self.uploadButton.enabled = FALSE;
         self.deleteButton.enabled = FALSE;
     }
+}
+
+- (void)configureBottomToolbar {
+    UIBarButtonItem *flexibleSpace = [[UIBarButtonItem alloc]
+                                      initWithBarButtonSystemItem:UIBarButtonSystemItemFlexibleSpace
+                                      target:nil
+                                      action:nil];
+    UIBarButtonItem *fixedSpace = [[UIBarButtonItem alloc]
+                                   initWithBarButtonSystemItem:UIBarButtonSystemItemFixedSpace
+                                   target:nil
+                                   action:nil];
+    fixedSpace.width = 18.0;
+    UIBarButtonItem *uploadItem = self.uploadButton ?: [[UIBarButtonItem alloc]
+                                                        initWithTitle:NSLocalizedString(@"Upload", @"Upload")
+                                                        style:UIBarButtonItemStylePlain
+                                                        target:self
+                                                        action:@selector(uploadPressed:)];
+    UIBarButtonItem *deleteItem = self.deleteButton ?: [[UIBarButtonItem alloc]
+                                                        initWithTitle:NSLocalizedString(@"Delete", @"Delete")
+                                                        style:UIBarButtonItemStylePlain
+                                                        target:self
+                                                        action:@selector(deletePressed:)];
+    self.toolbarItems = @[flexibleSpace, uploadItem, fixedSpace, deleteItem, flexibleSpace];
+}
+
+- (NSArray<TripInfo *> *)selectedLocalTripInfos {
+    NSArray<NSIndexPath *> *selectedRows = self.tableView.indexPathsForSelectedRows;
+    if (selectedRows.count == 0) {
+        return @[];
+    }
+
+    NSArray<NSIndexPath *> *sortedRows = [selectedRows sortedArrayUsingComparator:^NSComparisonResult(NSIndexPath *lhs, NSIndexPath *rhs) {
+        if (lhs.section < rhs.section) {
+            return NSOrderedAscending;
+        }
+        if (lhs.section > rhs.section) {
+            return NSOrderedDescending;
+        }
+        if (lhs.row < rhs.row) {
+            return NSOrderedAscending;
+        }
+        if (lhs.row > rhs.row) {
+            return NSOrderedDescending;
+        }
+        return NSOrderedSame;
+    }];
+
+    NSMutableArray<TripInfo *> *tripInfos = [[NSMutableArray alloc] init];
+    for (NSIndexPath *indexPath in sortedRows) {
+        if (indexPath.section == 0) {
+            TripInfo *tripInfo = [self getTripInfo:indexPath];
+            if (tripInfo) {
+                [tripInfos addObject:tripInfo];
+            }
+        }
+    }
+    return [tripInfos copy];
+}
+
+- (void)beginUploadBatchWithTripInfos:(NSArray<TripInfo *> *)tripInfos {
+    if (tripInfos.count == 0) {
+        return;
+    }
+
+    if (!self.uploadQueue) {
+        self.uploadQueue = dispatch_queue_create("org.simra.uploadBatch", DISPATCH_QUEUE_SERIAL);
+    }
+
+    self.pendingUploadTripInfos = tripInfos;
+    self.activeUploadTrip = nil;
+    self.activeUploadTripInfo = nil;
+    self.uploadBatchIndex = 0;
+    self.uploadBatchSuccessCount = 0;
+    self.uploadBatchFailureCount = 0;
+    self.uploadBatchFailures = [[NSMutableArray alloc] init];
+    self.currentUploadingTripInfo = nil;
+    self.uploadButton.enabled = FALSE;
+    self.deleteButton.enabled = FALSE;
+    self.navigationItem.prompt = [NSString stringWithFormat:
+                                  NSLocalizedString(@"Uploading %lu trips", @"Uploading trips prompt"),
+                                  (unsigned long)tripInfos.count];
+
+    [self refreshTripTable];
+    [self uploadNextTripInBatch];
+}
+
+- (void)uploadNextTripInBatch {
+    if (self.uploadBatchIndex >= self.pendingUploadTripInfos.count) {
+        [self finishUploadBatch];
+        return;
+    }
+
+    self.activeUploadTripInfo = self.pendingUploadTripInfos[self.uploadBatchIndex];
+    self.currentUploadingTripInfo = self.activeUploadTripInfo;
+    self.uploadBatchIndex++;
+    self.navigationItem.prompt = [NSString stringWithFormat:
+                                  NSLocalizedString(@"Uploading %lu of %lu", @"Uploading progress prompt"),
+                                  (unsigned long)self.uploadBatchIndex,
+                                  (unsigned long)self.pendingUploadTripInfos.count];
+    [self refreshTripTable];
+
+    TripInfo *tripInfo = self.activeUploadTripInfo;
+    dispatch_async(self.uploadQueue, ^{
+        Trip *trip = [[Trip alloc] initFromStorage:tripInfo.identifier];
+        self.activeUploadTrip = trip;
+        [trip uploadFile:@"ride"
+          WithController:self
+                   error:@selector(uploadTripError:)
+              completion:@selector(uploadTripCompleted:)];
+    });
+}
+
+- (void)uploadTripError:(NSError *)connectionError {
+    NSString *failure = [NSString stringWithFormat:@"%ld: %@",
+                         (long)self.activeUploadTripInfo.identifier,
+                         connectionError.localizedDescription];
+    [self.uploadBatchFailures addObject:failure];
+    self.uploadBatchFailureCount++;
+    self.activeUploadTrip = nil;
+    self.currentUploadingTripInfo = nil;
+    [self refreshTripTable];
+    [self uploadNextTripInBatch];
+}
+
+- (void)uploadTripCompleted:(NSDictionary *)dict {
+    NSURLResponse *response = dict[@"response"];
+    NSData *data = dict[@"data"];
+
+    if ([response isKindOfClass:[NSHTTPURLResponse class]]) {
+        NSHTTPURLResponse *httpResponse = (NSHTTPURLResponse *)response;
+        if (httpResponse.statusCode >= 200 && httpResponse.statusCode <= 299) {
+            self.uploadBatchSuccessCount++;
+            self.activeUploadTrip = nil;
+            self.currentUploadingTripInfo = nil;
+            [self refreshTripTable];
+            [self uploadNextTripInBatch];
+            return;
+        }
+
+        NSString *message = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
+        NSString *failure = [NSString stringWithFormat:@"%ld: HTTP %ld %@",
+                             (long)self.activeUploadTripInfo.identifier,
+                             (long)httpResponse.statusCode,
+                             message ?: @""];
+        [self.uploadBatchFailures addObject:failure];
+    } else {
+        NSString *failure = [NSString stringWithFormat:@"%ld: %@",
+                             (long)self.activeUploadTripInfo.identifier,
+                             NSLocalizedString(@"No HTTP response", @"No HTTP response")];
+        [self.uploadBatchFailures addObject:failure];
+    }
+
+    self.uploadBatchFailureCount++;
+    self.activeUploadTrip = nil;
+    self.currentUploadingTripInfo = nil;
+    [self refreshTripTable];
+    [self uploadNextTripInBatch];
+}
+
+- (void)finishUploadBatch {
+    self.pendingUploadTripInfos = nil;
+    self.activeUploadTrip = nil;
+    self.activeUploadTripInfo = nil;
+    self.currentUploadingTripInfo = nil;
+    self.navigationItem.prompt = nil;
+    self.uploadButton.enabled = TRUE;
+    self.deleteButton.enabled = TRUE;
+    [self refreshTripTable];
+
+    NSString *message = [NSString stringWithFormat:
+                         NSLocalizedString(@"Uploaded %lu trip(s), %lu failed.", @"Upload batch summary"),
+                         (unsigned long)self.uploadBatchSuccessCount,
+                         (unsigned long)self.uploadBatchFailureCount];
+    if (self.uploadBatchFailures.count > 0) {
+        message = [message stringByAppendingFormat:@"\n%@", [self.uploadBatchFailures componentsJoinedByString:@"\n"]];
+    }
+
+    UIAlertController *summary = [UIAlertController alertControllerWithTitle:NSLocalizedString(@"Upload", @"Upload")
+                                                                     message:message
+                                                              preferredStyle:UIAlertControllerStyleAlert];
+    [summary addAction:[UIAlertAction actionWithTitle:NSLocalizedString(@"OK", @"OK")
+                                                style:UIAlertActionStyleDefault
+                                              handler:nil]];
+    [self presentViewController:summary animated:TRUE completion:nil];
 }
 
 - (void)viewWillAppear:(BOOL)animated {
@@ -245,7 +440,10 @@ NSInteger revertedSort(id num1, id num2, void *context) {
 
     NSString *status;
 
-    if (tripInfo.edited) {
+    if (self.currentUploadingTripInfo &&
+        self.currentUploadingTripInfo.identifier == tripInfo.identifier) {
+        status = NSLocalizedString(@"Uploading", @"Uploading");
+    } else if (tripInfo.edited) {
         status = NSLocalizedString(@"Edited", @"Edited");
         if (tripInfo.statisticsAdded) {
             status = [status stringByAppendingFormat:@"-%@",
@@ -301,7 +499,7 @@ NSInteger revertedSort(id num1, id num2, void *context) {
                                                                                title:NSLocalizedString(@"Upload", @"Upload Context")
                                                                              handler:^(UIContextualAction * _Nonnull action, __kindof UIView * _Nonnull sourceView, void (^ _Nonnull completionHandler)(BOOL)) {
         if ([self checkRegion]) {
-            [self doUpload:indexPath];
+            [self beginUploadBatchWithTripInfos:@[[self getTripInfo:indexPath]]];
         }
     }];
     uploadAction.backgroundColor = [UIColor systemBlueColor];
@@ -434,226 +632,6 @@ NSInteger revertedSort(id num1, id num2, void *context) {
         return FALSE;
     }
     return TRUE;
-}
-
-- (void)doUpload:(NSIndexPath *)indexPath {
-    TripInfo *tripInfo = [self getTripInfo:indexPath];
-    Trip *trip = [[Trip alloc] initFromStorage:tripInfo.identifier];
-    
-    
-    [trip uploadFile:@"ride"
-      WithController:self
-               error:@selector(completionError:)
-          completion:@selector(completionResponse:)];
-
-    self.ac = [UIAlertController alertControllerWithTitle:NSLocalizedString(@"Upload", @"Upload")
-                                                  message:NSLocalizedString(@"Running", @"Running")
-                                           preferredStyle:UIAlertControllerStyleAlert];
-
-    [self presentViewController:self.ac animated:TRUE completion:nil];
-}
-
-- (void)completionError:(NSError *)connectionError {
-    [self.ac dismissViewControllerAnimated:TRUE completion:^(){
-        UIAlertController *ac = [UIAlertController
-                                 alertControllerWithTitle:NSLocalizedString(@"Upload", @"Upload")
-                                 message:[NSString stringWithFormat:@"%@ %@",
-                                          NSLocalizedString(@"UploadError", @"UploadError"),
-                                          connectionError.localizedDescription]
-                                 preferredStyle:UIAlertControllerStyleAlert];
-        UIAlertAction *aay = [UIAlertAction actionWithTitle:NSLocalizedString(@"OK", @"OK")
-                                                      style:UIAlertActionStyleDefault
-                                                    handler:^(UIAlertAction * _Nonnull action) {
-                                                        [self.tableView reloadData];
-                                                    }];
-        [ac addAction:aay];
-        [self presentViewController:ac animated:TRUE completion:nil];
-    }];
-}
-
-- (void)completionResponse:(NSDictionary *)dict {
-    NSURLResponse *response = dict[@"response"];
-    NSData *data = dict[@"data"];
-    if ([response isKindOfClass:[NSHTTPURLResponse class]]) {
-        NSHTTPURLResponse *httpResponse = (NSHTTPURLResponse *)response;
-        if (httpResponse.statusCode >= 200 && httpResponse.statusCode <= 299) {
-            [self.ac dismissViewControllerAnimated:TRUE completion:^() {
-                [self positiveCompletionResponse:httpResponse.statusCode
-                                        withText:@""];
-            }];
-        } else {
-            [self.ac dismissViewControllerAnimated:TRUE completion:^() {
-                [self negativeCompletionResponse:httpResponse.statusCode
-                                        withText:[[NSString alloc]
-                                                  initWithData:data
-                                                  encoding:NSUTF8StringEncoding]];
-            }];
-        }
-    } else {
-        [self.ac dismissViewControllerAnimated:TRUE completion:^() {
-            [self noCompletionResponse];
-        }];
-    }
-}
-
-- (void)positiveCompletionResponse:(NSInteger)statusCode withText:(NSString *)text {
-    AppDelegate *ad = [AppDelegate sharedDelegate];
-    [ad.trips uploadFile:@"profile"
-          WithController:self
-                   error:@selector(completionErrorTrips:)
-              completion:@selector(completionResponseTrips:)];
-
-    self.ac = [UIAlertController
-               alertControllerWithTitle:NSLocalizedString(@"Upload", @"Upload")
-               message:NSLocalizedString(@"Profile Running", @"Profile Running")
-               preferredStyle:UIAlertControllerStyleAlert];
-    
-    [self presentViewController:self.ac
-                       animated:TRUE
-                     completion:nil];
-}
-
-- (void)negativeCompletionResponse:(NSInteger)statusCode withText:(NSString *)text {
-    self.ac = [UIAlertController
-               alertControllerWithTitle:NSLocalizedString(@"Upload", @"Upload")
-               message:[NSString stringWithFormat:@"%@\nHTTP:%ld %@",
-                        NSLocalizedString(@"UploadError", @"UploadError"),
-                        (long)statusCode,
-                        text]
-               preferredStyle:UIAlertControllerStyleAlert];
-    UIAlertAction *aay = [UIAlertAction actionWithTitle:NSLocalizedString(@"OK", @"OK")
-                                                  style:UIAlertActionStyleDefault
-                                                handler:^(UIAlertAction * _Nonnull action) {
-                                                    [self.tableView reloadData];
-                                                }];
-    [self.ac addAction:aay];
-    [self presentViewController:self.ac animated:TRUE completion:nil];
-}
-
-- (void)noCompletionResponse {
-    self.ac = [UIAlertController
-               alertControllerWithTitle:NSLocalizedString(@"Upload", @"Upload")
-               message:[NSString stringWithFormat:@"%@ no HTTP response",
-                        NSLocalizedString(@"UploadError", @"UploadError")]
-               preferredStyle:UIAlertControllerStyleAlert];
-    UIAlertAction *aay = [UIAlertAction actionWithTitle:NSLocalizedString(@"OK", @"OK")
-                                                  style:UIAlertActionStyleDefault
-                                                handler:^(UIAlertAction * _Nonnull action) {
-                                                    [self.tableView reloadData];
-                                                }];
-    [self.ac addAction:aay];
-    [self presentViewController:self.ac animated:TRUE completion:nil];
-}
-
-- (void)completionErrorTrips:(NSError *)connectionError {
-    [self.ac dismissViewControllerAnimated:TRUE completion:^(){
-        UIAlertController *ac = [UIAlertController
-                                 alertControllerWithTitle:NSLocalizedString(@"Upload", @"Upload")
-                                 message:[NSString stringWithFormat:@"%@ %@",
-                                          NSLocalizedString(@"Profile UploadError", @"Profile UploadError"),
-                                          connectionError.localizedDescription]
-                                 preferredStyle:UIAlertControllerStyleAlert];
-        UIAlertAction *aay = [UIAlertAction actionWithTitle:NSLocalizedString(@"OK", @"OK")
-                                                      style:UIAlertActionStyleDefault
-                                                    handler:^(UIAlertAction * _Nonnull action) {
-                                                        [self.tableView reloadData];
-                                                    }];
-        [ac addAction:aay];
-        [self presentViewController:ac animated:TRUE completion:nil];
-    }];
-}
-
-- (void)completionResponseTrips:(NSDictionary *)dict {
-    NSURLResponse *response = dict[@"response"];
-    NSData *data = dict[@"data"];
-    if ([response isKindOfClass:[NSHTTPURLResponse class]]) {
-        NSHTTPURLResponse *httpResponse = (NSHTTPURLResponse *)response;
-        if (httpResponse.statusCode >= 200 && httpResponse.statusCode <= 299) {
-            [self.ac dismissViewControllerAnimated:TRUE completion:^() {
-                [self positiveCompletionResponseTrips:httpResponse.statusCode
-                                        withText:@""];
-            }];
-        } else {
-            [self.ac dismissViewControllerAnimated:TRUE completion:^() {
-                [self negativeCompletionResponseTrips:httpResponse.statusCode
-                                        withText:[[NSString alloc]
-                                                  initWithData:data
-                                                  encoding:NSUTF8StringEncoding]];
-            }];
-        }
-    } else {
-        [self.ac dismissViewControllerAnimated:TRUE completion:^() {
-            [self noCompletionResponseTrips];
-        }];
-    }
-}
-
-- (void)positiveCompletionResponseTrips:(NSInteger)statusCode withText:(NSString *)text {
-#if 0 // postponed implementation
-    AppDelegate *ad = [AppDelegate sharedDelegate];
-
-    for (NSNumber *key in [ad.trips.tripInfos.allKeys sortedArrayUsingSelector:@selector(compare:)]) {
-        TripInfo *tripInfo = ad.trips.tripInfos[key];
-        NSLog(@"positiveCompletionResponseTrips %ld (%ld/%ld/%d)",
-              tripInfo.identifier,
-              tripInfo.validAnnotationsCount,
-              tripInfo.annotationsCount,
-              tripInfo.reUploaded);
-        if (tripInfo.validAnnotationsCount == 0 && tripInfo.uploaded && !tripInfo.reUploaded) {
-            Trip *trip = [[Trip alloc] initFromStorage:tripInfo.identifier];
-#ifdef SIMULATE_UNKNOWN_FILEHASH
-            trip.fileHash = SIMULATE_UNKNOWN_FILEHASH;
-#endif
-            [trip uploadFile:@"ride"
-              WithController:self
-                       error:@selector(completionErrorTrips:)
-                  completion:@selector(completionResponseTrips:)];
-
-            self.ac = [UIAlertController
-                       alertControllerWithTitle:[NSString stringWithFormat:@"%@ %ld",
-                                                 NSLocalizedString(@"Re-Upload", @"Re-Upload"),
-                                                 tripInfo.identifier]
-                       message:NSLocalizedString(@"Running", @"Running")
-                       preferredStyle:UIAlertControllerStyleAlert];
-
-            [self presentViewController:self.ac animated:TRUE completion:nil];
-            return;
-        }
-    }
-#endif // postponed implementation
-    [self.tableView reloadData];
-}
-
-- (void)negativeCompletionResponseTrips:(NSInteger)statusCode withText:(NSString *)text {
-    self.ac = [UIAlertController
-               alertControllerWithTitle:NSLocalizedString(@"Upload", @"Upload")
-               message:[NSString stringWithFormat:@"%@\nHTTP:%ld %@",
-                        NSLocalizedString(@"Profile UploadError", @"Profile UploadError"),
-                        (long)statusCode,
-                        text]
-               preferredStyle:UIAlertControllerStyleAlert];
-    UIAlertAction *aay = [UIAlertAction actionWithTitle:NSLocalizedString(@"OK", @"OK")
-                                                  style:UIAlertActionStyleDefault
-                                                handler:^(UIAlertAction * _Nonnull action) {
-                                                    [self.tableView reloadData];
-                                                }];
-    [self.ac addAction:aay];
-    [self presentViewController:self.ac animated:TRUE completion:nil];
-}
-
-- (void)noCompletionResponseTrips {
-    self.ac = [UIAlertController
-               alertControllerWithTitle:NSLocalizedString(@"Upload", @"Upload")
-               message:[NSString stringWithFormat:@"%@ no HTTP response",
-                        NSLocalizedString(@"Profile UploadError", @"Profile UploadError")]
-               preferredStyle:UIAlertControllerStyleAlert];
-    UIAlertAction *aay = [UIAlertAction actionWithTitle:NSLocalizedString(@"OK", @"OK")
-                                                  style:UIAlertActionStyleDefault
-                                                handler:^(UIAlertAction * _Nonnull action) {
-                                                    [self.tableView reloadData];
-                                                }];
-    [self.ac addAction:aay];
-    [self presentViewController:self.ac animated:TRUE completion:nil];
 }
 
 @end

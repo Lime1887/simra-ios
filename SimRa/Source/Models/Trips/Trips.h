@@ -8,7 +8,6 @@
 
 #import <Foundation/Foundation.h>
 #import "Trip.h"
-#import "UploaderObject.h"
 
 NS_ASSUME_NONNULL_BEGIN
 

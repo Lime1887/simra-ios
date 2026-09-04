@@ -3,132 +3,417 @@
 //  SimRa
 //
 //  Created by Emil Pauls on 27.08.26.
-//  Copyright © 2026 Mobile Cloud Computing an der Fakultät IV (Elektrotechnik und Informatik) der TU Berlin. All rights reserved.
+//  Copyright © 2026 Mobile Cloud Computing an der Fakultät IV
+//  (Elektrotechnik und Informatik) der TU Berlin. All rights reserved.
 //
-
 
 import SwiftUI
 
 struct SimRaAnnotationView: View {
-    var personImage: UIImage?
-    var recording: Bool
-    var speed: Double
-    var course: Double
-    var accx: Double
-    var accy: Double
-    var accz: Double
-    var heading: Double
 
-    private let size: CGFloat = 30.0
+    // MARK: - Input
+
+    let personImage: UIImage?
+
+    let recording: Bool
+
+    /// Speed in meters per second.
+    let speed: Double
+
+    /// Course in degrees.
+    let course: Double
+
+    /// Acceleration values.
+    let accx: Double
+    let accy: Double
+    let accz: Double
+
+    /// Heading in degrees.
+    let heading: Double
+
+    // MARK: - Constants
+
+    private let size: CGFloat = 36
+
+    private let ringWidth: CGFloat = 2.5
+
+    private let maximumSpeedKPH: Double = 50
+
+    // MARK: - Body
 
     var body: some View {
+
         ZStack {
-            // 1. Hintergrund-Kreis
+
+            // MARK: Base
+
             Circle()
-                .fill(Color(red: 1.0, green: 1.0, blue: 1.0, opacity: 0.5))
+                .fill(
+                    .ultraThinMaterial
+                )
 
-            // 2. Profilbild / Person-Bild (falls vorhanden)
-            if let uiImage = personImage {
-                Image(uiImage: uiImage)
-                    .resizable()
-                    .scaledToFill()
-                    .clipShape(Circle())
-            }
+            // MARK: Person Image
 
-            // 3. Tacho-Anzeige (Geschwindigkeit)
-            if speed > 0 {
-                let tachoMax: Double = 50.0 // km/h
-                let progress = min((speed * 3.6) / tachoMax, 1.0)
-                let startAngle = Angle.degrees(90 + 30)
-                let endAngle = startAngle + Angle.degrees(360.0 * (5.0 / 6.0) * progress)
+            personImageView
 
-                TachoArcShape(startAngle: startAngle, endAngle: endAngle)
-                    .fill(Color.red.opacity(0.5))
-                
-                TachoArcShape(startAngle: startAngle, endAngle: endAngle)
-                    .stroke(Color(red: 1.0, green: 1.0, blue: 1.0, opacity: 0.5), lineWidth: 1.0)
-            }
+            // MARK: Speed Ring
 
-            // 4. Äußerer Rahmen (Fence)
+            speedRing
+
+            // MARK: Acceleration Indicator
+
+            accelerationIndicator
+
+            // MARK: Heading Indicator
+
+            headingIndicator
+
+            // MARK: Recording Status
+
+            recordingIndicator
+
+            // MARK: Outer Border
+
             Circle()
-                .stroke(Color(red: 77/255, green: 97/255, blue: 137/255), lineWidth: 3.0)
+                .stroke(
+                    recording
+                    ? Color.red.opacity(0.95)
+                    : Color.primary.opacity(0.28),
+                    lineWidth:
+                        ringWidth
+                )
+        }
+        .frame(
+            width: size,
+            height: size
+        )
+        .clipShape(
+            Circle()
+        )
+        .shadow(
+            color: .black.opacity(0.15),
+            radius: 2,
+            y: 1
+        )
+        .accessibilityHidden(true)
+    }
 
-            // 5. Kurs-Anzeige (Course)
-            if course > 0 {
-                let rad = (course - 90) * .pi / 180
-                let courseWidth: CGFloat = 10.0
-                let x = size / 2 + (size / 2) * cos(rad) - courseWidth / 2
-                let y = size / 2 + (size / 2) * sin(rad) - courseWidth / 2
+    // MARK: - Person
 
+    @ViewBuilder
+    private var personImageView: some View {
+
+        if let personImage {
+
+            Image(
+                uiImage:
+                    personImage
+            )
+            .resizable()
+            .scaledToFill()
+            .frame(
+                width:
+                    size - 6,
+                height:
+                    size - 6
+            )
+            .clipShape(
                 Circle()
-                    .fill(Color.blue)
-                    .frame(width: courseWidth, height: courseWidth)
-                    .overlay(Circle().stroke(Color.white.opacity(0.5), lineWidth: 1.0))
-                    .position(x: x + courseWidth / 2, y: y + courseWidth / 2)
-            }
+            )
 
-            // 6. Beschleunigung (Accelerations)
-            if accx != 0 || accy != 0 || accz != 0 {
-                Ellipse()
-                    .fill(Color.green.opacity(0.5))
-                    .frame(width: max(0, abs(accx) * size / 2), height: max(0, abs(accx) * size / 2))
-                    .overlay(Ellipse().stroke(Color.green, lineWidth: 2.0))
-                    .position(x: size * 3 / 4, y: size * 3 / 4)
+        } else {
 
-                Ellipse()
-                    .fill(Color.red.opacity(0.5))
-                    .frame(width: max(0, abs(accy) * size / 2), height: max(0, abs(accy) * size / 2))
-                    .position(x: size * (1 - abs(accy) / 2), y: size * 3 / 4)
-
-                Ellipse()
-                    .fill(Color.blue.opacity(0.5))
-                    .frame(width: max(0, abs(accz) * size / 2), height: max(0, abs(accz) * size / 2))
-                    .position(x: size * (1 - abs(accz) / 4), y: size * (1 - abs(accz) / 2))
-            }
-
-            // 7. Aufnahme- / Stopp-Kontrollsymbol in der Mitte
-            Group {
-                if recording {
-                    RoundedRectangle(cornerRadius: size / 16)
-                        .frame(width: size / 2, height: size / 2)
-                } else {
-                    Circle()
-                        .frame(width: size * 3 / 4, height: size * 3 / 4)
-                }
-            }
-            .fill(Color.red.opacity(0.75))
-            .overlay(
-                Group {
-                    if recording {
-                        RoundedRectangle(cornerRadius: size / 16)
-                            .stroke(Color.white, lineWidth: 1.0)
-                            .frame(width: size / 2, height: size / 2)
-                    } else {
-                        Circle()
-                            .stroke(Color.white, lineWidth: 1.0)
-                            .frame(width: size * 3 / 4, height: size * 3 / 4)
-                    }
-                }
+            Image(
+                systemName:
+                    "person.fill"
+            )
+            .font(
+                .system(
+                    size: 17,
+                    weight: .medium
+                )
+            )
+            .foregroundStyle(
+                .secondary
             )
         }
-        .frame(width: size, height: size)
-        .clipShape(Circle())
+    }
+
+    // MARK: - Speed
+
+    @ViewBuilder
+    private var speedRing: some View {
+
+        let speedKPH =
+            max(
+                0,
+                speed * 3.6
+            )
+
+        let progress =
+            min(
+                speedKPH
+                / maximumSpeedKPH,
+                1
+            )
+
+        Circle()
+            .trim(
+                from: 0,
+                to: progress
+            )
+            .stroke(
+                speedColor(
+                    for:
+                        speedKPH
+                ),
+                style:
+                    StrokeStyle(
+                        lineWidth: 3,
+                        lineCap: .round
+                    )
+            )
+            .rotationEffect(
+                .degrees(-90)
+            )
+            .padding(
+                1.5
+            )
+            .opacity(
+                speedKPH > 0
+                    ? 0.95
+                    : 0
+            )
+    }
+
+    private func speedColor(
+        for speedKPH: Double
+    ) -> Color {
+
+        switch speedKPH {
+
+        case ..<15:
+            return .green
+
+        case ..<30:
+            return .yellow
+
+        case ..<40:
+            return .orange
+
+        default:
+            return .red
+        }
+    }
+
+    // MARK: - Acceleration
+
+    @ViewBuilder
+    private var accelerationIndicator: some View {
+
+        let magnitude =
+            sqrt(
+                accx * accx
+                +
+                accy * accy
+                +
+                accz * accz
+            )
+
+        let normalized =
+            min(
+                max(
+                    magnitude / 3.0,
+                    0
+                ),
+                1
+            )
+
+        Circle()
+            .stroke(
+                accelerationColor(
+                    magnitude:
+                        magnitude
+                ),
+                lineWidth:
+                    1.5
+            )
+            .scaleEffect(
+                0.82
+                +
+                (0.14 * normalized)
+            )
+            .opacity(
+                normalized > 0.05
+                    ? 0.35 + (0.45 * normalized)
+                    : 0
+            )
+    }
+
+    private func accelerationColor(
+        magnitude: Double
+    ) -> Color {
+
+        switch magnitude {
+
+        case ..<1.0:
+            return .green
+
+        case ..<2.0:
+            return .yellow
+
+        case ..<3.0:
+            return .orange
+
+        default:
+            return .red
+        }
+    }
+
+    // MARK: - Heading
+
+    @ViewBuilder
+    private var headingIndicator: some View {
+
+        let normalizedHeading =
+            normalizedAngle(
+                heading > 0
+                    ? heading
+                    : course
+            )
+
+        Image(
+            systemName:
+                "location.north.fill"
+        )
+        .font(
+            .system(
+                size: 11,
+                weight: .bold
+            )
+        )
+        .foregroundStyle(
+            .blue
+        )
+        .rotationEffect(
+            .degrees(
+                normalizedHeading
+            )
+        )
+        .offset(
+            y:
+                -(size / 2 - 7)
+        )
+        .shadow(
+            color: .black.opacity(0.22),
+            radius: 1,
+            y: 1
+        )
+    }
+
+    private func normalizedAngle(
+        _ angle: Double
+    ) -> Double {
+
+        var value =
+            angle
+                .truncatingRemainder(
+                    dividingBy: 360
+                )
+
+        if value < 0 {
+            value += 360
+        }
+
+        return value
+    }
+
+    // MARK: - Recording
+
+    @ViewBuilder
+    private var recordingIndicator: some View {
+
+        if recording {
+
+            RoundedRectangle(
+                cornerRadius: 3
+            )
+            .fill(
+                .red
+            )
+            .frame(
+                width: 11,
+                height: 11
+            )
+            .overlay {
+                RoundedRectangle(
+                    cornerRadius: 3
+                )
+                .stroke(
+                    .white.opacity(0.9),
+                    lineWidth: 1
+                )
+            }
+            .shadow(
+                color:
+                    .black.opacity(0.2),
+                radius: 1
+            )
+
+        } else {
+
+            Circle()
+                .fill(
+                    .red
+                )
+                .frame(
+                    width: 11,
+                    height: 11
+                )
+                .overlay {
+                    Circle()
+                        .stroke(
+                            .white.opacity(0.9),
+                            lineWidth: 1
+                        )
+                }
+                .shadow(
+                    color:
+                        .black.opacity(0.2),
+                    radius: 1
+                )
+        }
     }
 }
 
-// Hilfs-Shape für den Tacho-Bogen
-struct TachoArcShape: Shape {
-    var startAngle: Angle
-    var endAngle: Angle
+struct SimRaAnnotationView_Previews: PreviewProvider {
+    static var previews: some View {
+        VStack(
+            spacing: 24
+        ) {
 
-    func path(in rect: CGRect) -> Path {
-        var path = Path()
-        let center = CGPoint(x: rect.midX, y: rect.midY)
-        let radius = rect.width / 2
+            SimRaAnnotationView(
+                personImage: nil,
+                recording: false,
+                speed: 0,
+                course: 0,
+                accx: 0,
+                accy: 0,
+                accz: 0,
+                heading: 0
+            )
 
-        path.move(to: center)
-        path.addArc(center: center, radius: radius, startAngle: startAngle, endAngle: endAngle, clockwise: false)
-        path.closeSubpath()
-        return path
+            SimRaAnnotationView(
+                personImage: nil,
+                recording: true,
+                speed: 8.33,
+                course: 90,
+                accx: 0.8,
+                accy: 0.5,
+                accz: 0.2,
+                heading: 90
+            )
+        }
+        .padding()
     }
 }

@@ -1,3 +1,4 @@
+#if false
 // Trip.swift
 final class Trip: NSObject {
     @Published var identifier: Int = 0
@@ -181,3 +182,4 @@ final class Trip: NSObject {
         return try? JSONSerialization.data(withJSONObject: dict)
     }
 }
+#endif

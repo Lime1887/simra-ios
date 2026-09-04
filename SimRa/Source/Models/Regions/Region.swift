@@ -1,3 +1,11 @@
+//
+//  Region.swift
+//  SimRa
+//
+//  Created by Emil Pauls on 27.08.26.
+//  Copyright © 2026 Mobile Cloud Computing an der Fakultät IV (Elektrotechnik und Informatik) der TU Berlin. All rights reserved.
+//
+
 import Foundation
 import CoreLocation
 
@@ -14,8 +22,14 @@ public class Region: NSObject {
         super.init()
     }
 
-    override public var localizedDescription: String {
-        let strLoc = Bundle.preferredLocalizations(from: ["en", "de"]).first ?? "en"
+    public var localizedDescription: String {
+        let appLang = UserDefaults.standard.string(forKey: "appLanguage") ?? "auto"
+        let strLoc: String
+        if appLang == "auto" {
+            strLoc = Bundle.preferredLocalizations(from: ["en", "de"]).first ?? "en"
+        } else {
+            strLoc = appLang
+        }
         return (strLoc == "de" ? germanDescription : englishDescription) ?? identifier
     }
 

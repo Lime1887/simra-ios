@@ -7,6 +7,7 @@
 //
 
 #import "AppDelegate.h"
+#import "RecordingShortcutBridge.h"
 #import "SimRa-Swift.h"
 @interface AppDelegate ()
 
@@ -114,7 +115,9 @@
         UIViewController *rootController = keyWindow.rootViewController;
         UIViewController *topController =
             rootController ? [self topViewControllerFromRoot:rootController] : nil;
-        [UIAlertController showAlertWithTitle:@"SimRa" message:@"Device disconnected" style:UIAlertControllerStyleAlert buttonFirstTitle:@"Return" buttonFirstAction:^{} over:topController];
+        UIAlertController *alert = [UIAlertController alertControllerWithTitle:@"SimRa" message:@"Device disconnected" preferredStyle:UIAlertControllerStyleAlert];
+        [alert addAction:[UIAlertAction actionWithTitle:@"Return" style:UIAlertActionStyleDefault handler:nil]];
+        [topController presentViewController:alert animated:YES completion:nil];
     }
     else if ([notificationName isEqualToString:@"characteristicNotif"]){
         
@@ -152,6 +155,26 @@
 
 - (void)applicationWillTerminate:(UIApplication *)application {
     // Called when the application is about to terminate. Save data if appropriate. See also applicationDidEnterBackground:.
+}
+
+- (BOOL)application:(UIApplication *)application
+            openURL:(NSURL *)url
+            options:(NSDictionary<UIApplicationOpenURLOptionsKey,id> *)options {
+    if (![url.scheme isEqualToString:@"simra"]) {
+        return NO;
+    }
+
+    if ([url.host isEqualToString:@"recording"]) {
+        if ([url.path isEqualToString:@"/start"]) {
+            return [RecordingShortcutBridge startRecording];
+        }
+
+        if ([url.path isEqualToString:@"/stop"]) {
+            return [RecordingShortcutBridge stopRecording];
+        }
+    }
+
+    return NO;
 }
 
 - (void)openURL:(NSDictionary<NSString*, NSString*> *)dict {

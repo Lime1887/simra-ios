@@ -1,3 +1,12 @@
+//
+//  UploaderObject.swift
+//  SimRa
+//
+//  Created by Emil Pauls on 27.08.26.
+//  Copyright © 2026 Mobile Cloud Computing an der Fakultät IV (Elektrotechnik und Informatik) der TU Berlin. All rights reserved.
+//
+
+
 import Foundation
 import Security
 
@@ -37,10 +46,15 @@ open class UploaderObject: NSObject, URLSessionDelegate {
             return nil
         }
 
-        let ad = AppDelegate.sharedDelegate()
+        var regionIdentifier = ""
+        let regions = Regions()
+        if let current = regions.currentRegion() {
+            regionIdentifier = current.identifier
+        }
         var queryItems: [URLQueryItem] = [
-            URLQueryItem(name: "loc", value: ad.regions.currentRegion.identifier),
-            URLQueryItem(name: "clientHash", value: String.clientHash)
+            URLQueryItem(name: "loc", value: regionIdentifier),
+            // Changed from String.clientHash to API.clientHash() to fix usage as per instructions
+            URLQueryItem(name: "clientHash", value: API.clientHash())
         ]
 
         if let fileHash = fileHash, let filePasswd = filePasswd, !fileHash.isEmpty, !filePasswd.isEmpty {
@@ -52,7 +66,7 @@ open class UploaderObject: NSObject, URLSessionDelegate {
         return components
     }
 
-    public func uploadFile(_ name: String, withController controller: NSObject, error errorSelector: Selector, completion completionSelector: Selector) {
+    open func uploadFile(_ name: String, withController controller: NSObject, error errorSelector: Selector, completion completionSelector: Selector) {
         guard let csvFileUrl = self.csvFile() else { return }
 
         do {
@@ -64,7 +78,6 @@ open class UploaderObject: NSObject, URLSessionDelegate {
             print("Error reading csvFile: \(error)")
         }
 
-        let ad = AppDelegate.sharedDelegate()
         var components: URLComponents?
 
         if let fileHash = self.fileHash, let filePasswd = self.filePasswd {
@@ -93,7 +106,7 @@ open class UploaderObject: NSObject, URLSessionDelegate {
         request.timeoutInterval = 30.0
         print("request:\n\(request)")
 
-        let dataTask = uploadSession.uploadTask(with: request, from: csvFileUrl) { [weak self] data, response, connectionError in
+        let dataTask = uploadSession.uploadTask(with: request, fromFile: csvFileUrl) { [weak self] data, response, connectionError in
             guard let self = self else { return }
 
             if let connectionError = connectionError {
@@ -109,9 +122,9 @@ open class UploaderObject: NSObject, URLSessionDelegate {
                         if components.count == 2 {
                             self.fileHash = components[0]
                             self.filePasswd = components[1]
-                            let key = "Profile_\(ad.regions.regionId)"
+                            let key = "Profile_\(UserDefaults.standard.integer(forKey: "regionId"))"
                             let value = "\(self.fileHash ?? ""),\(self.filePasswd ?? "")"
-                            Utility.writeToKeyPrefs(withKey: key, val: value)
+                            Utility.writeToKeyPrefs(key: key, val: value)
                         }
                     }
                     self.version += 1

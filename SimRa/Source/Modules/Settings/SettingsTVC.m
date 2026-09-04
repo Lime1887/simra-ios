@@ -10,10 +10,9 @@
 #import "SettingsTVC.h"
 
 #import <MessageUI/MessageUI.h>
-#import <SSZipArchive/SSZipArchive.h>
+#import "../../../../Pods/SSZipArchive/SSZipArchive/SSZipArchive.h"
 
 #import "IdPicker.h"
-#import "AppDelegate.h"
 #import "NSTimeInterval+hms.h"
 #import "DSBarChart.h"
 #import "SimRa-Swift.h"
@@ -319,50 +318,18 @@ heightForHeaderInSection:(NSInteger)section {
 
     __weak typeof(self) weakSelf = self;
 
-    [UIAlertController
-        showAlertWithTitle:
-            NSLocalizedString(
-                @"Send local app data to SimRa team",
-                @"Send local app data to SimRa team"
-            )
-
-        message:
-            NSLocalizedString(
-                @"Attention! Only tap the Continue button, if you were asked to do so by the SimRa team. By pressing the Upload button in the next step, you send your SimRa configuration to the SimRa team. You can also specify to upload the last 10 rides or all rides.",
-                @"Diagnostic upload warning"
-            )
-
-        style:UIAlertControllerStyleAlert
-
-        buttonFirstTitle:
-            NSLocalizedString(
-                @"Cancel",
-                @"Cancel"
-            )
-
-        buttonSecondTitle:
-            NSLocalizedString(
-                @"OK",
-                @"OK"
-            )
-
-        buttonFirstAction:^{
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:NSLocalizedString(@"Send local app data to SimRa team", @"Send local app data to SimRa team") message:NSLocalizedString(@"Attention! Only tap the Continue button, if you were asked to do so by the SimRa team. By pressing the Upload button in the next step, you send your SimRa configuration to the SimRa team. You can also specify to upload the last 10 rides or all rides.", @"Diagnostic upload warning") preferredStyle:UIAlertControllerStyleAlert];
+    [alert addAction:[UIAlertAction actionWithTitle:NSLocalizedString(@"Cancel", @"Cancel") style:UIAlertActionStyleCancel handler:nil]];
+    [alert addAction:[UIAlertAction actionWithTitle:NSLocalizedString(@"OK", @"OK") style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *action) {
+        typeof(self) strongSelf = weakSelf;
+        if (!strongSelf) {
+            return;
         }
 
-        buttonSecondAction:^{
-
-            typeof(self) strongSelf = weakSelf;
-
-            if (!strongSelf) {
-                return;
-            }
-
-            [Utility writeSimRaPrefs];
-
-            [strongSelf showTotalRidesAlert];
-        }
-
-        over:self];
+        [Utility writeSimRaPrefs];
+        [strongSelf showTotalRidesAlert];
+    }]];
+    [self presentViewController:alert animated:YES completion:nil];
 }
 
 #pragma mark - Version Information
@@ -407,22 +374,18 @@ heightForHeaderInSection:(NSInteger)section {
     AppDelegate *appDelegate =
         [AppDelegate sharedDelegate];
 
-    NSInteger totalTrips =
-        appDelegate.trips.tripInfos.count;
+    NSArray<NSNumber *> *tripIdentifiers =
+        [appDelegate.trips.tripInfos.allKeys sortedArrayUsingSelector:@selector(compare:)];
 
-    if (totalTrips <= 0) {
+    if (tripIdentifiers.count == 0) {
         return @[];
     }
 
-    NSInteger firstTrip = 1;
+    NSArray<NSNumber *> *selectedTripIdentifiers = tripIdentifiers;
 
-    if (!allTrips &&
-        totalTrips > minimumTripsToSend) {
-
-        firstTrip =
-            totalTrips -
-            minimumTripsToSend +
-            1;
+    if (!allTrips && tripIdentifiers.count > minimumTripsToSend) {
+        NSRange range = NSMakeRange(tripIdentifiers.count - minimumTripsToSend, minimumTripsToSend);
+        selectedTripIdentifiers = [tripIdentifiers subarrayWithRange:range];
     }
 
     NSMutableArray<NSString *> *paths =
@@ -431,9 +394,8 @@ heightForHeaderInSection:(NSInteger)section {
     NSString *documentsDirectory =
         [Utility getDocumentDirectory];
 
-    for (NSInteger tripIndex = firstTrip;
-         tripIndex <= totalTrips;
-         tripIndex++) {
+    for (NSNumber *tripIdentifier in selectedTripIdentifiers) {
+        NSInteger tripIndex = tripIdentifier.integerValue;
 
         NSString *tripPath =
             [documentsDirectory
@@ -711,31 +673,9 @@ heightForHeaderInSection:(NSInteger)section {
 
 - (void)showUploadSuccess {
 
-    [UIAlertController
-        showAlertWithTitle:
-            NSLocalizedString(
-                @"SimRa",
-                @"SimRa"
-            )
-
-        message:
-            NSLocalizedString(
-                @"Files uploaded successfully",
-                @"Files uploaded successfully"
-            )
-
-        style:UIAlertControllerStyleAlert
-
-        buttonFirstTitle:
-            NSLocalizedString(
-                @"OK",
-                @"OK"
-            )
-
-        buttonFirstAction:^{
-        }
-
-        over:self];
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:NSLocalizedString(@"SimRa", @"SimRa") message:NSLocalizedString(@"Files uploaded successfully", @"Files uploaded successfully") preferredStyle:UIAlertControllerStyleAlert];
+    [alert addAction:[UIAlertAction actionWithTitle:NSLocalizedString(@"OK", @"OK") style:UIAlertActionStyleDefault handler:nil]];
+    [self presentViewController:alert animated:YES completion:nil];
 }
 
 - (void)showUploadError {
@@ -744,31 +684,9 @@ heightForHeaderInSection:(NSInteger)section {
         return;
     }
 
-    [UIAlertController
-        showAlertWithTitle:
-            NSLocalizedString(
-                @"SimRa",
-                @"SimRa"
-            )
-
-        message:
-            NSLocalizedString(
-                @"Something went wrong. Please try again later",
-                @"Something went wrong. Please try again later"
-            )
-
-        style:UIAlertControllerStyleAlert
-
-        buttonFirstTitle:
-            NSLocalizedString(
-                @"OK",
-                @"OK"
-            )
-
-        buttonFirstAction:^{
-        }
-
-        over:self];
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:NSLocalizedString(@"SimRa", @"SimRa") message:NSLocalizedString(@"Something went wrong. Please try again later", @"Something went wrong. Please try again later") preferredStyle:UIAlertControllerStyleAlert];
+    [alert addAction:[UIAlertAction actionWithTitle:NSLocalizedString(@"OK", @"OK") style:UIAlertActionStyleDefault handler:nil]];
+    [self presentViewController:alert animated:YES completion:nil];
 }
 
 #pragma mark - Ride Selection
