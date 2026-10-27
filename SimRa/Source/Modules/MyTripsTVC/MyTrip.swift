@@ -585,69 +585,29 @@ struct MyTripsView: View {
              from this specific trip.
              */
 
-            let info: TripInfo
-            let trip: Trip?
+            /*
+             Read only the compact TripInfo record for the first paint.
+             Loading the full location stream is deferred until the row
+             is already visible.
+             */
 
-            if let storedInfo =
+            guard let info =
                 TripInfo(
                     fromStorage:
                         tripIdentifier
-                ) {
-
-                info = storedInfo
-
-                trip =
-                    Trip(
-                        fromStorage:
-                            tripIdentifier
-                    )
-
-            } else if let storedTrip =
-                        Trip(
-                            fromStorage:
-                                tripIdentifier
-                        ) {
-
-                trip = storedTrip
-                info = storedTrip.tripInfo()
-
-            } else {
-
+                )
+            else {
                 continue
             }
-
-            /*
-             IMPORTANT:
-             Do not use info.duration.startDate here.
-
-             The start date is derived directly from the locations
-             belonging to THIS trip.
-             */
-
-            let startDate =
-                trip.flatMap {
-                    firstDate(
-                        for:
-                            $0
-                    )
-                }
-
-            let endDate =
-                trip.flatMap {
-                    lastDate(
-                        for:
-                            $0
-                    )
-                }
 
             let item =
                 TripListItem(
                     info:
                         info,
                     startDate:
-                        startDate,
+                        info.duration.startDate,
                     endDate:
-                        endDate
+                        info.duration.endDate
                 )
 
             items.append(
@@ -719,85 +679,74 @@ struct MyTripsView: View {
             }
         }
 
+        let summaryIdentifiers =
+            items.map(\.id)
+
         isLoading = false
         hasLoaded = true
+
+        Task {
+            for identifier in summaryIdentifiers {
+                guard !Task.isCancelled else {
+                    return
+                }
+
+                await calculateSummary(
+                    forIdentifier:
+                        identifier
+                )
+
+                // Keep the first-render path responsive when many rides exist.
+                await Task.yield()
+            }
+        }
     }
 
     // MARK: Summary Calculation
 
     private func calculateSummary(
-        for trip: Trip
+        forIdentifier identifier: Int
     ) async {
-
         guard !Task.isCancelled else {
             return
         }
 
-        let input =
-            TripSummaryBuilder.makeInput(
-                from:
-                    trip
-            )
-
-        guard !Task.isCancelled else {
-            return
-        }
-
-        _ =
+        let summary: TripSummary? =
             await Task.detached(
                 priority:
                     .utility
-            ) {
+            ) { () -> TripSummary? in
+                guard let trip = Trip(fromStorage: identifier) else {
+                    return nil
+                }
 
-                TripSummaryBuilder.calculate(
+                let input =
+                    TripSummaryBuilder.makeInput(
+                        from:
+                            trip
+                    )
+
+                return TripSummaryBuilder.calculate(
                     input:
                         input
                 )
-
             }
             .value
 
-        guard !Task.isCancelled else {
-            return
-        }
-
         guard
+            !Task.isCancelled,
+            let summary,
             let index =
                 items.firstIndex(
                     where: {
-                        $0.id ==
-                        trip.identifier
+                        $0.id == identifier
                     }
                 )
         else {
             return
         }
 
-        if let info =
-            TripInfo(
-                fromStorage:
-                    trip.identifier
-            ) {
-
-            /*
-             Preserve the already determined dates from the
-             current list item. Re-reading TripInfo must not
-             replace them with potentially stale duration data.
-             */
-
-            let existing =
-                items[index]
-
-            items[index] =
-                TripListItem(
-                    info:
-                        info,
-                    startDate:
-                        existing.startDate,
-                    endDate:
-                        existing.endDate
-                )
-        }
+        items[index].summaryOverride = summary
     }
 
     // MARK: Selection
@@ -1057,6 +1006,9 @@ private struct TripListItem:
     let endDate:
         Date?
 
+    var summaryOverride:
+        TripSummary? = nil
+
     var id: Int {
         info.identifier
     }
@@ -1068,6 +1020,7 @@ private struct TripListItem:
     var summary:
         TripSummary {
 
+        summaryOverride ??
         TripSummary(
             distanceMeters:
                 max(
@@ -1095,7 +1048,7 @@ private struct TripListItem:
             endDate:
                 endDate
         )
-    }
+        }
 
     private var calculatedDuration:
         TimeInterval {

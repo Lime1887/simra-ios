@@ -1,85 +1,60 @@
-//
-//  OBSConfigView.swift
-//  SimRa
-//
-//  Created by Emil Pauls on 27.08.26.
-//  Copyright © 2026 Mobile Cloud Computing an der Fakultät IV (Elektrotechnik und Informatik) der TU Berlin. All rights reserved.
-//
-
-
 import SwiftUI
 import CoreBluetooth
 
+private let obsServiceUUID = CBUUID(string: "1FE7FAF9-CE63-4236-0004-000000000000")
+
 struct OBSConfigView: View {
-    @StateObject private var vm = OBSConfigViewModel()
-    
+    @StateObject private var viewModel = OBSConfigViewModel()
+
     var body: some View {
         List {
-            if vm.isConnected {
-                Section(header: Text(NSLocalizedString("Sensor Details", comment: "Sensor Details"))) {
-                    HStack {
-                        Text(NSLocalizedString("Left Offset", comment: "Left Offset"))
-                        Spacer()
-                        Text(vm.leftOffset)
-                            .foregroundColor(.secondary)
-                    }
-                    
-                    HStack {
-                        Text(NSLocalizedString("Right Offset", comment: "Right Offset"))
-                        Spacer()
-                        Text(vm.rightOffset)
-                            .foregroundColor(.secondary)
-                    }
-                    
+            if viewModel.isConnected {
+                Section("Sensor Details") {
+                    LabeledContent("Left Offset", value: viewModel.leftOffset)
+                    LabeledContent("Right Offset", value: viewModel.rightOffset)
+
                     VStack(alignment: .leading, spacing: 8) {
-                        Text(NSLocalizedString("Distance Indicator", comment: "Distance Indicator"))
+                        Text("Distance Indicator")
                             .font(.caption)
-                            .foregroundColor(.secondary)
-                        
-                        ProgressView(value: vm.distanceProgress)
-                            .tint(vm.distanceProgress < 0.5 ? .red : .green)
+                            .foregroundStyle(.secondary)
+
+                        ProgressView(value: viewModel.distanceProgress)
+                            .tint(viewModel.distanceProgress < 0.5 ? .red : .green)
                     }
-                    .padding(.vertical, 4)
-                    
-                    Button(role: .destructive) {
-                        vm.disconnect()
-                    } label: {
-                        HStack {
-                            Spacer()
-                            Text(NSLocalizedString("Disconnect Sensor", comment: "Disconnect Sensor"))
-                            Spacer()
-                        }
+
+                    Button("Disconnect Sensor", role: .destructive) {
+                        viewModel.disconnect()
                     }
                 }
             } else {
-                Section(header: Text(NSLocalizedString("Discovered Devices", comment: "Discovered Devices"))) {
-                    if vm.isScanning && vm.discoveredDevices.isEmpty {
+                Section("Discovered Devices") {
+                    if viewModel.isScanning && viewModel.discoveredDevices.isEmpty {
                         HStack(spacing: 12) {
                             ProgressView()
-                            Text(NSLocalizedString("Scanning for OpenBikeSensor...", comment: "Scanning for OpenBikeSensor..."))
-                                .foregroundColor(.secondary)
+                            Text("Scanning for OpenBikeSensor...")
+                                .foregroundStyle(.secondary)
                         }
-                    } else if vm.discoveredDevices.isEmpty {
-                        Text(NSLocalizedString("No devices found", comment: "No devices found"))
-                            .foregroundColor(.secondary)
+                    } else if viewModel.discoveredDevices.isEmpty {
+                        Text("No devices found")
+                            .foregroundStyle(.secondary)
                     } else {
-                        ForEach(vm.discoveredDevices, id: \.identifier) { device in
+                        ForEach(viewModel.discoveredDevices, id: \.identifier) { device in
                             Button {
-                                vm.connect(to: device)
+                                viewModel.connect(to: device)
                             } label: {
                                 HStack {
-                                    VStack(alignment: .leading) {
-                                        Text(device.name ?? NSLocalizedString("Unknown Device", comment: "Unknown Device"))
-                                            .font(.body)
-                                            .foregroundColor(.primary)
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text(device.name ?? "Unknown Device")
+                                            .foregroundStyle(.primary)
                                         Text(device.identifier.uuidString)
                                             .font(.caption2)
-                                            .foregroundColor(.gray)
+                                            .foregroundStyle(.secondary)
                                     }
+
                                     Spacer()
                                     Image(systemName: "chevron.right")
                                         .font(.caption)
-                                        .foregroundColor(.secondary)
+                                        .foregroundStyle(.secondary)
                                 }
                             }
                         }
@@ -87,87 +62,160 @@ struct OBSConfigView: View {
                 }
             }
         }
-        .navigationTitle(NSLocalizedString("OpenBikeSensor", comment: "OpenBikeSensor"))
+        .navigationTitle("OpenBikeSensor")
         .navigationBarTitleDisplayMode(.inline)
-        .onAppear {
-            vm.startSetup()
-        }
-        .onDisappear {
-            vm.stopSetup()
-        }
+        .onAppear { viewModel.startSetup() }
+        .onDisappear { viewModel.stopSetup() }
     }
 }
 
-// MARK: - ViewModel
-
 @MainActor
 final class OBSConfigViewModel: NSObject, ObservableObject, BluetoothDelegate {
-    @Published var isConnected = false
-    @Published var isScanning = false
-    @Published var discoveredDevices: [CBPeripheral] = []
-    @Published var leftOffset = "0 cm"
-    @Published var rightOffset = "0 cm"
-    @Published var distanceProgress: Double = 0.0
-    
-    private var bleManager: BluetoothManager?
-    private let obsServiceUUID = CBUUID(string: "1FE7FAF9-CE63-4236-0004-000000000000")
-    private let sensorDistanceUUID = CBUUID(string: "1FE7FAF9-CE63-4236-0004-000000000002")
-    private let offsetUUID = CBUUID(string: "1FE7FAF9-CE63-4236-0004-000000000004")
+    @Published private(set) var isConnected = false
+    @Published private(set) var isScanning = false
+    @Published private(set) var discoveredDevices: [CBPeripheral] = []
+    @Published private(set) var leftOffset = "0 cm"
+    @Published private(set) var rightOffset = "0 cm"
+    @Published private(set) var distanceProgress = 0.0
+
+    private var bluetoothManager: BluetoothManager?
+    private let distanceCharacteristicUUID = CBUUID(string: "1FE7FAF9-CE63-4236-0004-000000000002")
+    private let offsetCharacteristicUUID = CBUUID(string: "1FE7FAF9-CE63-4236-0004-000000000004")
 
     func startSetup() {
-        bleManager = BluetoothManager.getInstance()
-        bleManager?.delegate = self
-        
-        if bleManager?.connected == true {
+        let manager = BluetoothManager.getInstance()
+        bluetoothManager = manager
+        manager.delegate = self
+
+        if manager.connected {
             isConnected = true
-        } else {
-            isConnected = false
-            isScanning = true
-            bleManager?.startScanPeripheral()
+            isScanning = false
+        } else if manager.state == .poweredOn {
+            startScanning()
         }
     }
 
     func stopSetup() {
-        bleManager?.stopScanPeripheral()
-    }
-
-    func connect(to peripheral: CBPeripheral) {
-        bleManager?.connectPeripheral(peripheral)
-        bleManager?.stopScanPeripheral()
+        bluetoothManager?.stopScanPeripheral()
         isScanning = false
     }
 
+    func connect(to peripheral: CBPeripheral) {
+        guard let bluetoothManager else { return }
+        isScanning = false
+        bluetoothManager.stopScanPeripheral()
+        bluetoothManager.connectPeripheral(peripheral)
+    }
+
     func disconnect() {
-        bleManager?.disconnectPeripheral()
+        bluetoothManager?.disconnectPeripheral()
         isConnected = false
+        isScanning = false
         discoveredDevices.removeAll()
         startSetup()
     }
 
-    // MARK: - BluetoothDelegate Methods
+    private func startScanning() {
+        isScanning = true
+        bluetoothManager?.startScanPeripheral()
+    }
 
-    nonisolated func didDiscoverPeripheral(_ peripheral: CBPeripheral, advertisementData: [String : Any], RSSI: NSNumber) {
-        Task { @MainActor in
-            if !discoveredDevices.contains(where: { $0.identifier == peripheral.identifier }) {
-                discoveredDevices.append(peripheral)
+    private func updateSensorState(for characteristic: CBCharacteristic) {
+        guard let value = characteristic.value else { return }
+        let bytes = [UInt8](value)
+
+        if characteristic.uuid == distanceCharacteristicUUID, let distance = unsignedInteger(from: bytes) {
+            // OBS reports the measured distance in millimetres. Keep the UI bounded
+            // so an invalid packet cannot produce an invalid progress value.
+            let distanceCentimeters = Double(distance) / 10.0
+            distanceProgress = min(max(distanceCentimeters / 200.0, 0), 1)
+        } else if characteristic.uuid == offsetCharacteristicUUID {
+            let offsets = parseOffsets(from: bytes)
+            if let left = offsets.left {
+                leftOffset = "\(left) cm"
             }
+            if let right = offsets.right {
+                rightOffset = "\(right) cm"
+            }
+        }
+    }
+
+    private func unsignedInteger(from bytes: [UInt8]) -> UInt32? {
+        guard !bytes.isEmpty, bytes.count <= 4 else { return nil }
+        return bytes.enumerated().reduce(UInt32(0)) { result, item in
+            result | (UInt32(item.element) << UInt32(item.offset * 8))
+        }
+    }
+
+    private func parseOffsets(from bytes: [UInt8]) -> (left: Int?, right: Int?) {
+        guard bytes.count >= 4 else { return (nil, nil) }
+        let left = Int(UInt16(bytes[0]) | (UInt16(bytes[1]) << 8))
+        let right = Int(UInt16(bytes[2]) | (UInt16(bytes[3]) << 8))
+        return (left, right)
+    }
+
+    nonisolated func didDiscoverPeripheral(
+        _ peripheral: CBPeripheral,
+        advertisementData: [String: Any],
+        RSSI: NSNumber
+    ) {
+        Task { @MainActor in
+            guard !discoveredDevices.contains(where: { $0.identifier == peripheral.identifier }) else {
+                return
+            }
+            discoveredDevices.append(peripheral)
         }
     }
 
     nonisolated func didConnectedPeripheral(_ connectedPeripheral: CBPeripheral) {
         Task { @MainActor in
-            self.isConnected = true
+            isConnected = true
+            isScanning = false
+        }
+    }
+
+    nonisolated func didDisconnectPeripheral(_ peripheral: CBPeripheral) {
+        Task { @MainActor in
+            isConnected = false
+            startScanning()
         }
     }
 
     nonisolated func didUpdateState(_ state: CBManagerState) {
         Task { @MainActor in
             if state == .poweredOn {
-                self.isScanning = true
-                self.bleManager?.startScanPeripheral()
+                startScanning()
             } else {
-                self.isScanning = false
+                isScanning = false
             }
+        }
+    }
+
+    nonisolated func didDiscoverServices(_ peripheral: CBPeripheral) {
+        Task { @MainActor in
+            bluetoothManager?.discoverCharacteristics()
+        }
+    }
+
+    nonisolated func didDiscoverCharacteritics(_ service: CBService) {
+        guard service.uuid == obsServiceUUID else { return }
+
+        Task { @MainActor in
+            bluetoothManager?.addCharacteristics(service)
+
+            for characteristic in service.characteristics ?? [] {
+                if characteristic.uuid == distanceCharacteristicUUID ||
+                    characteristic.uuid == offsetCharacteristicUUID {
+                    bluetoothManager?.readValueForCharacteristic(characteristic: characteristic)
+                    bluetoothManager?.setNotification(enable: true, forCharacteristic: characteristic)
+                }
+            }
+        }
+    }
+
+    nonisolated func didReadValueForCharacteristic(_ characteristic: CBCharacteristic) {
+        Task { @MainActor in
+            updateSensorState(for: characteristic)
         }
     }
 }

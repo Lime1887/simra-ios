@@ -131,7 +131,8 @@ struct ProfileView: View {
         [
             ("auto", NSLocalizedString("Automatic", comment: "Language")),
             ("de", "Deutsch"),
-            ("en", "English")
+            ("en", "English"),
+            ("fr", "Français")
         ]
     }
 

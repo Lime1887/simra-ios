@@ -64,7 +64,8 @@ public final class SimRaRecordingActivityManager {
         let content =
             ActivityContent(
                 state: state,
-                staleDate: nil
+                // Mark the content stale if the app cannot deliver a fresh metric update.
+                staleDate: .now.addingTimeInterval(60)
             )
 
         do {
@@ -133,7 +134,8 @@ public final class SimRaRecordingActivityManager {
         let content =
             ActivityContent(
                 state: state,
-                staleDate: nil
+                // Mark the content stale if the app cannot deliver a fresh metric update.
+                staleDate: .now.addingTimeInterval(60)
             )
 
         await activity.update(
@@ -180,7 +182,8 @@ public final class SimRaRecordingActivityManager {
             ActivityContent(
                 state:
                     finalState,
-                staleDate: nil
+                // Mark the content stale if the app cannot deliver a fresh metric update.
+                staleDate: .now.addingTimeInterval(60)
             )
 
         await activity.end(

@@ -15,7 +15,6 @@
 		63882B7F265C474400E147D9 /* Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 63882B7E265C474400E147D9 /* Extensions.swift */; };
 		63DB6251269F41D900E09EC6 /* BluetoothDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 63DB624F269F41D900E09EC6 /* BluetoothDelegate.swift */; };
 		63DB6252269F41D900E09EC6 /* BluetoothManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 63DB6250269F41D900E09EC6 /* BluetoothManager.swift */; };
-		8421D6902254B4E50056B62C /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 8421D68F2254B4E50056B62C /* LaunchScreen.storyboard */; };
 		84564AF822549B1200D46132 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = 84564AF622549B1100D46132 /* Localizable.strings */; };
 		848338022253CA0D00342285 /* constants.plist in Resources */ = {isa = PBXBuildFile; fileRef = 848338042253CA0D00342285 /* constants.plist */; };
 		84DD1E8E224C0027004895F9 /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 84DD1E8C224C0027004895F9 /* Main.storyboard */; };
@@ -26,16 +25,14 @@
 		9F18879E303DEC500014F58C /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 9F18879D303DEC500014F58C /* WidgetKit.framework */; };
 		9F1887A0303DEC500014F58C /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 9F18879F303DEC500014F58C /* SwiftUI.framework */; };
 		9F1887B1303DEC500014F58C /* SimRa WidgetsExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 9F18879C303DEC500014F58C /* SimRa WidgetsExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		9F30E80A3090D2D1008EB465 /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 9F30E8093090D2D1008EB465 /* LaunchScreen.storyboard */; };
+		9F30E8133090D2D9008EB465 /* InfoPlist.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = 9F30E8123090D2D9008EB465 /* InfoPlist.xcstrings */; };
 		9F39596930488C760034C61D /* SimRa.icon in Resources */ = {isa = PBXBuildFile; fileRef = 9F39596830488C760034C61D /* SimRa.icon */; };
 		9F67C8D83045FA510080CDED /* SimRaRecordingActivityManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F67C8D73045FA510080CDED /* SimRaRecordingActivityManager.swift */; };
 		9F67C8DA304642E60080CDED /* SimpleZipArchiver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F67C8D9304642E60080CDED /* SimpleZipArchiver.swift */; };
 		9FA202D3304B08A7003D5164 /* RecordingAppIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7A100040000000000000004 /* RecordingAppIntents.swift */; };
-		9FA202D6304B126E003D5164 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FE3CFC73040467900C11560 /* AppDelegate.swift */; };
-		9FA202D7304B1C44003D5164 /* RecordingShortcutBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FE3CF7F303FB37200C11560 /* RecordingShortcutBridge.swift */; };
-		9FA202D8304B1F55003D5164 /* Trip.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FC315E630421ADC00EFB67D /* Trip.swift */; };
 		9FA202D9304B1F6D003D5164 /* Regions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FE3CFEC30407F4A00C11560 /* Regions.swift */; };
 		9FA202DA304B1F7E003D5164 /* Region.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FE3CFEA30407F4200C11560 /* Region.swift */; };
-		9FA202DB304B20DF003D5164 /* TripModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FC315E4304219CB00EFB67D /* TripModels.swift */; };
 		9FC315E5304219CB00EFB67D /* TripModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FC315E4304219CB00EFB67D /* TripModels.swift */; };
 		9FC315E730421ADC00EFB67D /* Trip.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FC315E630421ADC00EFB67D /* Trip.swift */; };
 		9FC315EB304259A000EFB67D /* DSBarChart.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FC315EA304259A000EFB67D /* DSBarChart.swift */; };
@@ -141,7 +138,6 @@
 		63DB624F269F41D900E09EC6 /* BluetoothDelegate.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = BluetoothDelegate.swift; sourceTree = "<group>"; };
 		63DB6250269F41D900E09EC6 /* BluetoothManager.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = BluetoothManager.swift; sourceTree = "<group>"; };
 		84121643225757A4006F9E2C /* de */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = de; path = de.lproj/Main.strings; sourceTree = "<group>"; };
-		8421D68F2254B4E50056B62C /* LaunchScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; path = LaunchScreen.storyboard; sourceTree = "<group>"; };
 		84376F6B27342FFA0006DBEC /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/Main.strings; sourceTree = "<group>"; };
 		84564AF722549B1100D46132 /* Base */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = Base; path = Base.lproj/Localizable.strings; sourceTree = "<group>"; };
 		84564AF922549B1500D46132 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
@@ -164,6 +160,11 @@
 		9F18879C303DEC500014F58C /* SimRa WidgetsExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = "SimRa WidgetsExtension.appex"; sourceTree = BUILT_PRODUCTS_DIR; };
 		9F18879D303DEC500014F58C /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
 		9F18879F303DEC500014F58C /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = System/Library/Frameworks/SwiftUI.framework; sourceTree = SDKROOT; };
+		9F30E8083090D2D1008EB465 /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/LaunchScreen.storyboard; sourceTree = "<group>"; };
+		9F30E80B3090D2D9008EB465 /* fr */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = fr; path = fr.lproj/Localizable.strings; sourceTree = "<group>"; };
+		9F30E80C3090D2D9008EB465 /* fr */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = fr; path = fr.lproj/Main.strings; sourceTree = "<group>"; };
+		9F30E80D3090D2D9008EB465 /* mul */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; name = mul; path = mul.lproj/LaunchScreen.xcstrings; sourceTree = "<group>"; };
+		9F30E8123090D2D9008EB465 /* InfoPlist.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = InfoPlist.xcstrings; sourceTree = "<group>"; };
 		9F39596830488C760034C61D /* SimRa.icon */ = {isa = PBXFileReference; lastKnownFileType = folder.iconcomposer.icon; path = SimRa.icon; sourceTree = "<group>"; };
 		9F67C8D73045FA510080CDED /* SimRaRecordingActivityManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SimRaRecordingActivityManager.swift; sourceTree = "<group>"; };
 		9F67C8D9304642E60080CDED /* SimpleZipArchiver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SimpleZipArchiver.swift; sourceTree = "<group>"; };
@@ -271,6 +272,7 @@
 		6383AC1C2657E6EE0038F3AE /* Resources */ = {
 			isa = PBXGroup;
 			children = (
+				9F30E8123090D2D9008EB465 /* InfoPlist.xcstrings */,
 				848338042253CA0D00342285 /* constants.plist */,
 				848338002253C6A200342285 /* server.cer */,
 				9F39596830488C760034C61D /* SimRa.icon */,
@@ -299,7 +301,7 @@
 				9F67C8D9304642E60080CDED /* SimpleZipArchiver.swift */,
 				9FE3CF79303FB2BA00C11560 /* SimRaApp.swift */,
 				9FE3CF7B303FB2C000C11560 /* BluetoothObserver.swift */,
-				8421D68F2254B4E50056B62C /* LaunchScreen.storyboard */,
+				9F30E8093090D2D1008EB465 /* LaunchScreen.storyboard */,
 				84DD1E8C224C0027004895F9 /* Main.storyboard */,
 				84564AF622549B1100D46132 /* Localizable.strings */,
 				9FE3CFB930403AB200C11560 /* ClosePassInfo.swift */,
@@ -693,6 +695,7 @@
 				en,
 				Base,
 				de,
+				fr,
 			);
 			mainGroup = 84DD1E7A224C0027004895F9;
 			productRefGroup = 84DD1E84224C0027004895F9 /* Products */;
@@ -713,10 +716,11 @@
 			buildActionMask = 2147483647;
 			files = (
 				84564AF822549B1200D46132 /* Localizable.strings in Resources */,
+				9F30E8133090D2D9008EB465 /* InfoPlist.xcstrings in Resources */,
 				84DD1E93224C0028004895F9 /* Assets.xcassets in Resources */,
 				9F39596930488C760034C61D /* SimRa.icon in Resources */,
 				848338022253CA0D00342285 /* constants.plist in Resources */,
-				8421D6902254B4E50056B62C /* LaunchScreen.storyboard in Resources */,
+				9F30E80A3090D2D1008EB465 /* LaunchScreen.storyboard in Resources */,
 				84DD1E8E224C0027004895F9 /* Main.storyboard in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -846,6 +850,7 @@
 				84564AF722549B1100D46132 /* Base */,
 				84564AF922549B1500D46132 /* en */,
 				84564AFA22549B1700D46132 /* de */,
+				9F30E80B3090D2D9008EB465 /* fr */,
 			);
 			name = Localizable.strings;
 			sourceTree = "<group>";
@@ -865,8 +870,18 @@
 			children = (
 				84121643225757A4006F9E2C /* de */,
 				84376F6B27342FFA0006DBEC /* en */,
+				9F30E80C3090D2D9008EB465 /* fr */,
 			);
 			name = Main.storyboard;
+			sourceTree = "<group>";
+		};
+		9F30E8093090D2D1008EB465 /* LaunchScreen.storyboard */ = {
+			isa = PBXVariantGroup;
+			children = (
+				9F30E8083090D2D1008EB465 /* Base */,
+				9F30E80D3090D2D9008EB465 /* mul */,
+			);
+			name = LaunchScreen.storyboard;
 			sourceTree = "<group>";
 		};
 /* End PBXVariantGroup section */

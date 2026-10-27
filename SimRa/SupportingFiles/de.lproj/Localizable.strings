@@ -269,6 +269,10 @@
 
 /* Statistics */
 "Statistics" = "Statistik";
+"Total duration" = "Gesamtdauer";
+"Idle time" = "Standzeit";
+"Scary incidents" = "Beängstigende Vorfälle";
+"Rides by time of day" = "Fahrten nach Tageszeit";
 
 /* The bars show your previous rides and the distance covered. */
 "The bars show your previous rides and the distance covered." = "Die Balken zeigen deine bisherigen Fahrten und die zurückgelegte Distanz.";
@@ -509,13 +513,13 @@
 "Shortcuts" = "Kurzbefehle";
 "Apple Watch" = "Apple Watch";
 "Involved road user" = "Beteiligte Verkehrsteilnehmer";
-"Offline map mode" = "Offline-Kartenmodus";
+"Do not show map" = "Keine Karte anzeigen";
 "Show recorded route" = "Gefahrene Linie anzeigen";
 "Appearance" = "Darstellung";
 "System" = "System";
 "Light" = "Hell";
 "Dark" = "Dunkel";
-"Recording and map" = "Aufzeichnung und Karte";
+"Map display" = "Kartendarstellung";
 "No route recorded" = "Keine Strecke aufgezeichnet";
 "Notifications" = "Benachrichtigungen";
 "Ride reminder" = "Fahrt-Erinnerung";

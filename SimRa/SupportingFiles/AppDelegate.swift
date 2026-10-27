@@ -836,7 +836,7 @@ final class AppDelegate:
                 state:
                     state,
                 staleDate:
-                    nil
+                    Date().addingTimeInterval(60)
             )
 
         Task {

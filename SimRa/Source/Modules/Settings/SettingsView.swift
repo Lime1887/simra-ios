@@ -87,7 +87,7 @@ struct SettingsView: View {
 
             Section {
                 Toggle(
-                    NSLocalizedString("Offline map mode", comment: "Disable map tiles during recording"),
+                    NSLocalizedString("Do not show map", comment: "Do not show the map while recording"),
                     isOn: $offlineMapMode
                 )
 
@@ -105,7 +105,7 @@ struct SettingsView: View {
                     Text(NSLocalizedString("Dark", comment: "Dark appearance")).tag("dark")
                 }
             } header: {
-                Text(NSLocalizedString("Recording and map", comment: "Recording and map settings"))
+                Text(NSLocalizedString("Map display", comment: "Map display settings"))
             }
 
             Section {
@@ -262,7 +262,7 @@ struct SettingsView: View {
                     ProfileView()
                 } label: {
                     Label(
-                        "Profil",
+                        NSLocalizedString("Profile", comment: "Profile"),
                         systemImage: "person.crop.circle"
                     )
                 }
@@ -271,7 +271,7 @@ struct SettingsView: View {
                     TripSettingsView()
                 } label: {
                     Label(
-                        "Fahrt-Einstellungen",
+                        NSLocalizedString("Trip Settings", comment: "Trip settings"),
                         systemImage: "slider.horizontal.3"
                     )
                 }
@@ -1050,10 +1050,39 @@ private struct StatisticsDashboardView: View {
     }
 
     private var timeOfDay: [Int] {
-        summaries.reduce(into: Array(repeating: 0, count: 4)) { result, summary in
+        let suffix = AppDelegate.shared().regions.regionId == 0
+            ? ""
+            : "-\(AppDelegate.shared().regions.regionId)"
+        let stored =
+            UserDefaults.standard.array(
+                forKey:
+                    "totalSlots\(suffix)"
+            ) as? [Int] ?? []
+
+        if stored.count >= 24 {
+            return stride(from: 0, to: 24, by: 6).map { start in
+                stored[start..<start + 6].reduce(0, +)
+            }
+        }
+
+        return summaries.reduce(into: Array(repeating: 0, count: 4)) { result, summary in
             let hour = Calendar.current.component(.hour, from: summary.date)
             result[min(hour / 6, 3)] += 1
         }
+    }
+
+    private func persistedStatistic(_ key: String) -> Int {
+        let regionID = AppDelegate.shared().regions.regionId
+        let suffix = regionID == 0 ? "" : "-\(regionID)"
+        return UserDefaults.standard.integer(forKey: "\(key)\(suffix)")
+    }
+
+    private func formatDuration(_ seconds: Int) -> String {
+        let hours = seconds / 3_600
+        let minutes = (seconds % 3_600) / 60
+        return hours > 0
+            ? String(format: "%dh %02dm", hours, minutes)
+            : String(format: "%dm", minutes)
     }
 
     private var yearly: [(Int, Int)] {
@@ -1070,6 +1099,9 @@ private struct StatisticsDashboardView: View {
                 metric("Trips", value: "\(summaries.count)", symbol: "bicycle")
                 metric("Total distance", value: formatDistance(totalDistance), symbol: "point.topleft.down.curvedto.point.bottomright.up")
                 metric("Incidents", value: "\(totalIncidents)", symbol: "exclamationmark.triangle")
+                metric("Total duration", value: formatDuration(persistedStatistic("totalDuration")), symbol: "clock")
+                metric("Idle time", value: formatDuration(persistedStatistic("totalIdle")), symbol: "pause.circle")
+                metric("Scary incidents", value: "\(persistedStatistic("numberOfScary"))", symbol: "exclamationmark.octagon")
                 metric("Uploaded", value: "\(Int(uploadedShare * 100))%", symbol: "arrow.up.circle")
             } header: {
                 Text(NSLocalizedString("Overview", comment: "Statistics overview"))
@@ -1091,7 +1123,7 @@ private struct StatisticsDashboardView: View {
                 }
                 .frame(height: 120, alignment: .bottom)
             } header: {
-                Text(NSLocalizedString("Trips by time of day", comment: "Time of day distribution"))
+                Text(NSLocalizedString("Rides by time of day", comment: "Time of day distribution"))
             }
 
             Section {

@@ -269,6 +269,10 @@
 
 /* Statistics */
 "Statistics" = "Statistics";
+"Total duration" = "Total duration";
+"Idle time" = "Idle time";
+"Scary incidents" = "Scary incidents";
+"Rides by time of day" = "Rides by time of day";
 
 /* The bars show your previous rides and the distance covered. */
 "The bars show your previous rides and the distance covered." = "The bars show your previous rides and the distance covered.";
@@ -509,13 +513,13 @@
 "Shortcuts" = "Shortcuts";
 "Apple Watch" = "Apple Watch";
 "Involved road user" = "Involved road user";
-"Offline map mode" = "Offline map mode";
+"Do not show map" = "Do not show map";
 "Show recorded route" = "Show recorded route";
 "Appearance" = "Appearance";
 "System" = "System";
 "Light" = "Light";
 "Dark" = "Dark";
-"Recording and map" = "Recording and map";
+"Map display" = "Map display";
 "No route recorded" = "No route recorded";
 "Notifications" = "Notifications";
 "Ride reminder" = "Ride reminder";

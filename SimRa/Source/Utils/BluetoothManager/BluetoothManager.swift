@@ -13,10 +13,7 @@ import UIKit
     @objc var delegate : BluetoothDelegate?
     @objc private(set) var connected = false
     var state: CBManagerState? {
-        guard _manager != nil else {
-            return nil
-        }
-        return CBManagerState(rawValue: (_manager?.state.rawValue)!)
+        _manager?.state
     }
     private var timeoutMonitor : Timer? /// Timeout monitor of connect to peripheral
     private var interrogateMonitor : Timer? /// Timeout monitor of interrogate the peripheral
@@ -104,10 +101,10 @@ import UIKit
      */
     @objc func disconnectPeripheral() {
         self.showDisconnectedState()
-        if connectedPeripheral != nil {
-            _manager?.cancelPeripheralConnection(connectedPeripheral!)
+        if let connectedPeripheral {
+            _manager?.cancelPeripheralConnection(connectedPeripheral)
             startScanPeripheral()
-            connectedPeripheral = nil
+            self.connectedPeripheral = nil
             characteristicsDic.removeAll()
         }
     }
@@ -174,12 +171,14 @@ import UIKit
      
      - parameter timer: The timer touch off this selector
      */
-    @objc func connectTimeout(_ timer : Timer) {
-        if isConnecting {
-            isConnecting = false
-            connectPeripheral(timer.userInfo as! CBPeripheral)
-            timeoutMonitor = nil
+    @objc func connectTimeout(_ timer: Timer) {
+        guard isConnecting, let peripheral = timer.userInfo as? CBPeripheral else {
+            return
         }
+
+        isConnecting = false
+        timeoutMonitor = nil
+        connectPeripheral(peripheral)
     }
     /**
      This method is invoked when interrogate peripheral is timeout
@@ -316,7 +315,10 @@ import UIKit
             timeoutMonitor = nil
         }
         connected = false
-        delegate?.failToConnectPeripheral?(peripheral, error: error!)
+        delegate?.failToConnectPeripheral?(
+            peripheral,
+            error: error ?? NSError(domain: "BluetoothManager", code: -1)
+        )
     }
     /**
      The method is invoked where services were discovered.
@@ -397,8 +399,6 @@ import UIKit
             return
         }
         guard characteristic.value != nil else {
-            delegate?.didFailToReadValueForCharacteristic?(error!)
-
             return
         }
         delegate?.didReadValueForCharacteristic?(characteristic)

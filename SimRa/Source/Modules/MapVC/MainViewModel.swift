@@ -31,6 +31,52 @@ struct RecordingIncident: Identifiable {
     }
 }
 
+// MARK: - Background Recording Metrics
+
+private struct RecordingMetricPoint: Sendable {
+    let latitude: Double
+    let longitude: Double
+    let hasIncident: Bool
+}
+
+private struct RecordingMetrics: Sendable {
+    let distanceMeters: Int
+    let incidents: Int
+
+    static func calculate(
+        from points: [RecordingMetricPoint]
+    ) -> RecordingMetrics {
+        var distance = 0.0
+        var incidents = 0
+        var previous: CLLocation?
+
+        for point in points {
+            if point.hasIncident {
+                incidents += 1
+            }
+
+            let current = CLLocation(
+                latitude: point.latitude,
+                longitude: point.longitude
+            )
+
+            if let previous {
+                let segment = current.distance(from: previous)
+                if segment.isFinite, segment >= 0, segment < 10_000 {
+                    distance += segment
+                }
+            }
+
+            previous = current
+        }
+
+        return RecordingMetrics(
+            distanceMeters: max(Int(distance.rounded()), 0),
+            incidents: max(incidents, 0)
+        )
+    }
+}
+
 // MARK: - Main View Model
 
 @MainActor
@@ -113,6 +159,9 @@ final class MainViewModel: ObservableObject {
 
     @Published
     private(set) var recordingIncidents: [RecordingIncident] = []
+
+    @Published
+    private(set) var currentSpeedKmh = 0.0
 
     // MARK: - Navigation
 
@@ -470,6 +519,7 @@ final class MainViewModel: ObservableObject {
             recordingRouteOverlay = nil
             recordingRouteCoordinates = []
             recordingIncidents = []
+            currentSpeedKmh = 0
 
             lastOverlayPointCount = 0
             lastRouteUpdateDate = nil
@@ -578,6 +628,7 @@ final class MainViewModel: ObservableObject {
 
         cachedDistanceMeters = 0
         cachedIncidents = 0
+        currentSpeedKmh = 0
     }
 
     // MARK: - Status
@@ -600,8 +651,16 @@ final class MainViewModel: ObservableObject {
                 )
             )
 
+        let speed =
+            max(
+                0,
+                appDelegate.activeTrip?.lastLocation?.speed ?? 0
+            ) * 3.6
+
+        currentSpeedKmh = speed
+
         recordingStatusText =
-            "\(formatElapsedTime(elapsed)) · \(formatDistance(cachedDistanceMeters))"
+            "\(formatElapsedTime(elapsed)) · \(formatDistance(cachedDistanceMeters)) · \(String(format: "%.1f km/h", speed))"
     }
 
     // MARK: - Scheduling
@@ -668,35 +727,46 @@ final class MainViewModel: ObservableObject {
             }
         }
 
+        let metricPoints =
+            (trip.tripLocations as NSArray)
+                .compactMap { $0 as? TripLocation }
+                .map {
+                    RecordingMetricPoint(
+                        latitude: $0.location.coordinate.latitude,
+                        longitude: $0.location.coordinate.longitude,
+                        hasIncident: $0.tripAnnotation != nil
+                    )
+                }
+
+        let tripIdentifier = trip.identifier
         isComputingMetrics = true
 
-        let distance =
-            max(
-                trip.length(),
-                0
-            )
+        Task { [weak self] in
+            let metrics =
+                await Task.detached(priority: .utility) {
+                    RecordingMetrics.calculate(
+                        from: metricPoints
+                    )
+                }.value
 
-        let incidents =
-            max(
-                trip.tripValidAnnotations(),
-                0
-            )
+            guard let self else {
+                return
+            }
 
-        cachedDistanceMeters =
-            distance
+            guard
+                self.appDelegate.activeTrip?.identifier == tripIdentifier
+            else {
+                self.isComputingMetrics = false
+                return
+            }
 
-        cachedIncidents =
-            incidents
-
-        lastMetricsPointCount =
-            pointCount
-
-        lastMetricsUpdate =
-            .now
-
-        isComputingMetrics = false
-
-        updateStatusText()
+            self.cachedDistanceMeters = metrics.distanceMeters
+            self.cachedIncidents = metrics.incidents
+            self.lastMetricsPointCount = pointCount
+            self.lastMetricsUpdate = .now
+            self.isComputingMetrics = false
+            self.updateStatusText()
+        }
     }
 
     // MARK: - Incident Cache
@@ -710,10 +780,13 @@ final class MainViewModel: ObservableObject {
         }
 
         cachedIncidents =
-            max(
-                trip.tripValidAnnotations(),
-                0
-            )
+            (trip.tripLocations as NSArray)
+                .compactMap { $0 as? TripLocation }
+                .reduce(into: 0) { count, location in
+                    if location.tripAnnotation != nil {
+                        count += 1
+                    }
+                }
 
         lastMetricsPointCount =
             trip.tripLocations.count
@@ -757,7 +830,7 @@ final class MainViewModel: ObservableObject {
             return
         }
 
-        let coordinates: [CLLocationCoordinate2D] =
+        let allCoordinates: [CLLocationCoordinate2D] =
             locations.compactMap { location in
                 let coordinate =
                     location.location.coordinate
@@ -768,6 +841,12 @@ final class MainViewModel: ObservableObject {
 
                 return coordinate
             }
+
+        let coordinates =
+            downsampleRouteCoordinates(
+                allCoordinates,
+                maximumCount: 600
+            )
 
         recordingRouteCoordinates = coordinates
 
@@ -825,6 +904,36 @@ final class MainViewModel: ObservableObject {
         lastRouteUpdateDate = .now
     }
     
+    private func downsampleRouteCoordinates(
+        _ coordinates: [CLLocationCoordinate2D],
+        maximumCount: Int
+    ) -> [CLLocationCoordinate2D] {
+        guard
+            maximumCount >= 2,
+            coordinates.count > maximumCount
+        else {
+            return coordinates
+        }
+
+        var result: [CLLocationCoordinate2D] = []
+        result.reserveCapacity(maximumCount)
+
+        let step =
+            Double(coordinates.count - 1) /
+            Double(maximumCount - 1)
+
+        for index in 0..<maximumCount {
+            let sourceIndex =
+                min(
+                    coordinates.count - 1,
+                    Int((Double(index) * step).rounded())
+                )
+            result.append(coordinates[sourceIndex])
+        }
+
+        return result
+    }
+
     // MARK: - Widget Synchronization
 
     private func synchronizeWidgetState(

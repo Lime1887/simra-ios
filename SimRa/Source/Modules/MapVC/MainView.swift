@@ -13,6 +13,8 @@ import MapKit
 struct MainView: View {
 
     @StateObject private var vm = MainViewModel()
+    @Namespace private var mapScope
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     var body: some View {
         NavigationStack {
@@ -111,7 +113,8 @@ struct MainView: View {
                 )
             } else {
                 Map(
-                    position: $vm.cameraPosition
+                    position: $vm.cameraPosition,
+                    scope: mapScope
                 ) {
                     UserAnnotation()
                     if vm.shouldRenderRecordingRoute {
@@ -125,9 +128,32 @@ struct MainView: View {
                     )
                 )
                 .mapControls {
+                    // Use MapKit's native arrangement and sizing, matching
+                    // the compact control layout used by Apple Maps.
                     MapUserLocationButton()
                     MapCompass()
+                    MapPitchToggle()
                     MapScaleView()
+                }
+                .controlSize(.small)
+                .mapControlVisibility(
+                    horizontalSizeClass == .regular
+                        ? .hidden
+                        : .visible
+                )
+                .mapScope(mapScope)
+                .overlay(alignment: .bottomTrailing) {
+                    if horizontalSizeClass == .regular {
+                        VStack(spacing: 6) {
+                            MapPitchToggle(scope: mapScope)
+                            MapUserLocationButton(scope: mapScope)
+                            MapCompass(scope: mapScope)
+                            MapScaleView(scope: mapScope)
+                        }
+                        .controlSize(.small)
+                        .safeAreaPadding(.trailing, 12)
+                        .safeAreaPadding(.bottom, 92)
+                    }
                 }
             }
         }
